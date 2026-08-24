@@ -1,0 +1,339 @@
+import { useState } from 'react';
+import { GoogleLogin } from '@react-oauth/google';
+import { playSystemSound } from '../utils/hunterUtils';
+
+const API_BASE_URL = 'http://localhost:5000';
+
+const decodeJwt = (token) => {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+};
+
+const AuthModal = ({ isOpen, onAuthSuccess }) => {
+  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const isGoogleConfigured = typeof window !== 'undefined' && Boolean(window.__IS_GOOGLE_AUTH_CONFIGURED__);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+    playSystemSound('click');
+
+    const cleanEmail = email.trim();
+    const cleanName = name.trim();
+
+    if (!cleanEmail || !password) {
+      playSystemSound('penalty');
+      setErrorMessage('Email address and Password are required.');
+      setLoading(false);
+      return;
+    }
+
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        playSystemSound('penalty');
+        setErrorMessage('New Password and Confirm Password do not match!');
+        setLoading(false);
+        return;
+      }
+      if (password.length < 4) {
+        playSystemSound('penalty');
+        setErrorMessage('Password must be at least 4 characters long.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const payload = mode === 'register' 
+      ? { email: cleanEmail, password, name: cleanName } 
+      : { email: cleanEmail, password };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const contentType = res.headers.get('content-type');
+      let data = {};
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      }
+
+      if (!res.ok) {
+        playSystemSound('penalty');
+        setErrorMessage(data.error || data.message || `Authentication failed (HTTP ${res.status})`);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.token) {
+        playSystemSound('penalty');
+        setErrorMessage('Server returned an invalid session token.');
+        setLoading(false);
+        return;
+      }
+
+      playSystemSound('levelUp');
+      localStorage.setItem('hunter_token', data.token);
+      const expiryTime = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      localStorage.setItem('hunter_session_expiry', expiryTime.toString());
+
+      if (onAuthSuccess) {
+        onAuthSuccess(data);
+      }
+    } catch (err) {
+      console.error('[SYSTEM AUTH ERROR]: Failed to connect to authentication server:', err);
+      playSystemSound('penalty');
+      setErrorMessage('Network error: Unable to connect to backend server at http://localhost:5000');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    setErrorMessage('');
+    setLoading(true);
+    playSystemSound('click');
+
+    try {
+      const payload = decodeJwt(credentialResponse.credential);
+      const googleUser = {
+        googleId: payload?.sub || `google_${Date.now()}`,
+        email: payload?.email || 'hunter@monarch.io',
+        name: payload?.name || 'Player',
+        avatarUrl: payload?.picture || ''
+      };
+
+      const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(googleUser)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Google Login failed');
+      }
+
+      playSystemSound('levelUp');
+      localStorage.setItem('hunter_token', data.token);
+      const expiryTime = Date.now() + 30 * 24 * 60 * 60 * 1000;
+      localStorage.setItem('hunter_session_expiry', expiryTime.toString());
+
+      if (onAuthSuccess) {
+        onAuthSuccess(data);
+      }
+    } catch (err) {
+      console.error('[GOOGLE AUTH ERROR]:', err);
+      playSystemSound('penalty');
+      setErrorMessage(err.message || 'Google OAuth failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-lg p-3 sm:p-4 animate-fade-in select-none">
+      <div 
+        className="relative w-full max-w-md bg-[#060b17] border-2 border-[var(--glow)] p-5 sm:p-6 shadow-[0_0_40px_rgba(45,212,255,0.5)] text-left space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar"
+        style={{ clipPath: 'polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))' }}
+      >
+        {/* HEADER BADGE */}
+        <div className="font-['Orbitron'] text-[10px] sm:text-[11px] tracking-[3px] text-[var(--glow)] uppercase flex justify-between">
+          <span>[ SYSTEM ACCESS PROTOCOL ]</span>
+          <span className="text-[var(--gold)]">S-RANK ENCRYPTION</span>
+        </div>
+
+        <div className="text-center py-1">
+          <div className="font-['Orbitron'] text-xl sm:text-2xl font-black text-white tracking-widest uppercase">
+            {mode === 'login' ? 'HUNTER AUTHENTICATION' : 'SYSTEM AWAKENING REGISTRATION'}
+          </div>
+          <div className="text-xs text-[var(--text-dim)] font-['Share_Tech_Mono'] mt-1">
+            Authenticate your Hunter credentials to enter the Shadow System.
+          </div>
+        </div>
+
+        {/* HELPER NOTE */}
+        {mode === 'register' && (
+          <div className="p-2.5 bg-cyan-950/40 border border-cyan-500/40 text-cyan-300 font-['Share_Tech_Mono'] text-xs leading-relaxed flex items-start gap-2">
+            <span className="text-cyan-400 font-bold shrink-0">ℹ️</span>
+            <span>Create a new password for this app. Do NOT enter your personal email password.</span>
+          </div>
+        )}
+
+        {/* MODE TOGGLE BUTTONS */}
+        <div className="flex border border-[var(--line)] bg-[#0a0f1c] p-1 rounded-sm">
+          <button
+            type="button"
+            onClick={() => { setMode('login'); setErrorMessage(''); }}
+            className={`flex-1 font-['Orbitron'] text-xs py-2 tracking-wider uppercase transition-all cursor-pointer ${
+              mode === 'login'
+                ? 'bg-[var(--glow)] text-[#04141c] font-bold shadow-[0_0_10px_rgba(45,212,255,0.4)]'
+                : 'text-[var(--text-dim)] hover:text-white'
+            }`}
+          >
+            🔑 LOGIN
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode('register'); setErrorMessage(''); }}
+            className={`flex-1 font-['Orbitron'] text-xs py-2 tracking-wider uppercase transition-all cursor-pointer ${
+              mode === 'register'
+                ? 'bg-[var(--purple)] text-white font-bold shadow-[0_0_10px_rgba(139,92,246,0.4)]'
+                : 'text-[var(--text-dim)] hover:text-white'
+            }`}
+          >
+            ⚡ REGISTER
+          </button>
+        </div>
+
+        {/* ERROR ALARM BANNER */}
+        {errorMessage && (
+          <div className="p-3 bg-red-950/90 border border-red-500 text-red-300 font-['Orbitron'] text-xs tracking-wider animate-pulse flex items-start gap-2">
+            <span className="shrink-0 font-bold">[ SYSTEM ERROR ]:</span>
+            <span className="break-words flex-1 font-mono text-xs">{errorMessage}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 font-['Rajdhani']">
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs font-['Orbitron'] text-[var(--glow)] mb-1 uppercase">
+                FULL NAME / HUNTER CODENAME:
+              </label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Iron Sovereign"
+                className="w-full bg-[#0a0f1c] border border-[var(--line)] text-white p-2.5 text-sm outline-none focus:border-[var(--glow)] font-['Share_Tech_Mono']"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-['Orbitron'] text-cyan-300 mb-1 uppercase">
+              EMAIL ADDRESS:
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="hunter@monarch.io"
+              className="w-full bg-[#0a0f1c] border border-[var(--line)] text-white p-2.5 text-sm outline-none focus:border-[var(--glow)] font-['Share_Tech_Mono']"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-['Orbitron'] text-purple-300 mb-1 uppercase">
+              {mode === 'register' ? 'NEW PASSWORD:' : 'PASSWORD:'}
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                className="w-full bg-[#0a0f1c] border border-[var(--line)] text-white p-2.5 pr-10 text-sm outline-none focus:border-[var(--glow)] font-['Share_Tech_Mono']"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-white transition-colors cursor-pointer text-xs p-1"
+                title={showPassword ? "Hide Password" : "Show Password"}
+              >
+                {showPassword ? '👁️' : '🙈'}
+              </button>
+            </div>
+          </div>
+
+          {mode === 'register' && (
+            <div>
+              <label className="block text-xs font-['Orbitron'] text-purple-300 mb-1 uppercase">
+                CONFIRM PASSWORD:
+              </label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#0a0f1c] border border-[var(--line)] text-white p-2.5 pr-10 text-sm outline-none focus:border-[var(--glow)] font-['Share_Tech_Mono']"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-dim)] hover:text-white transition-colors cursor-pointer text-xs p-1"
+                  title={showConfirmPassword ? "Hide Password" : "Show Password"}
+                >
+                  {showConfirmPassword ? '👁️' : '🙈'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-[var(--glow-dim)] hover:bg-[var(--glow)] text-[#04141c] font-['Orbitron'] font-extrabold text-xs tracking-[2px] py-3 uppercase transition-all shadow-[0_0_20px_rgba(45,212,255,0.5)] cursor-pointer"
+          >
+            {loading ? '[ TRANSMITTING CREDENTIALS... ]' : mode === 'login' ? '[ ACCESS SYSTEM ]' : '[ AWAKEN HUNTER ACCOUNT ]'}
+          </button>
+        </form>
+
+        {/* OFFICIAL GOOGLE OAUTH (CONDITIONALLY RENDERED ONLY WHEN VALID CLIENT ID IS SET) */}
+        {isGoogleConfigured && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center my-2 gap-2">
+              <div className="h-[1px] bg-[var(--line)] flex-1"></div>
+              <span className="text-[10px] font-['Orbitron'] text-[var(--text-dim)] uppercase">OR CONNECT WITH GOOGLE</span>
+              <div className="h-[1px] bg-[var(--line)] flex-1"></div>
+            </div>
+
+            <div className="flex justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => console.warn('[SYSTEM OAUTH NOTICE]: Google login popup closed or unconfigured. Defaulting to local email/JWT authentication.')}
+                theme="filled_dark"
+                shape="square"
+                text="signin_with"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AuthModal;
