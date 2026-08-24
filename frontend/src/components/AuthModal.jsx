@@ -1,4 +1,4 @@
-import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
+﻿import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { playSystemSound } from '../utils/hunterUtils';
@@ -65,7 +65,7 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
       }
     }
 
-    const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const endpoint = mode === 'register' ? '/auth/register' : '/auth/login';
     const payload = mode === 'register' 
       ? { email: cleanEmail, password, name: cleanName } 
       : { email: cleanEmail, password };
@@ -108,7 +108,7 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
     } catch (err) {
       console.error('[SYSTEM AUTH ERROR]: Failed to connect to authentication server:', err);
       playSystemSound('penalty');
-      setErrorMessage('Network error: Unable to connect to backend server at ${API_ROOT}');
+      setErrorMessage('Network error: Unable to reach backend server. Please verify network connection.');
     } finally {
       setLoading(false);
     }
@@ -128,7 +128,7 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
         avatarUrl: payload?.picture || ''
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+      const res = await fetch(`${API_BASE_URL}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(googleUser)
