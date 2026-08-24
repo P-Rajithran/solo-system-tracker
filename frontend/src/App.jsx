@@ -578,13 +578,19 @@ function App() {
     goldCoins: 250,
     dungeonClears: 0,
     clearedGates: [],
-    unlockedAchievements: [],
+        unlockedAchievements: [],
     weightHistory: [],
     avatarUrl: defaultAvatar
   };
 
   if (isBooting) {
-    return <BootScreen onStart={() => setIsBooting(false)} />;
+    return (
+      <BootScreen 
+        player={activePlayer} 
+        onComplete={() => setIsBooting(false)} 
+        onStart={() => setIsBooting(false)} 
+      />
+    );
   }
 
   if (isAuthLoading) {

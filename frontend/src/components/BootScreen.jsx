@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
 
-const BootScreen = ({ player, onComplete }) => {
+const BootScreen = ({ player, onComplete, onStart }) => {
   // Sequence stages: 'welcome' -> 'prompt' -> 'door_opening' -> 'awakening_quote'
   const [stage, setStage] = useState('welcome');
 
   const hunterName = player?.name || 'Player';
+
+  const finishBoot = () => {
+    localStorage.setItem('hasSeenIntro', 'true');
+    if (typeof onComplete === 'function') onComplete();
+    if (typeof onStart === 'function') onStart();
+  };
 
   // Play audio helper with fallback policy handling
   const playAudio = (soundFile) => {
@@ -35,16 +41,15 @@ const BootScreen = ({ player, onComplete }) => {
     playAudio('/sounds/sound.mp3');
     setStage('door_opening');
     
-    // Stage 3: Slide doors open (2 seconds)
+    // Stage 3: Slide doors open (1.5 seconds)
     setTimeout(() => {
       setStage('awakening_quote');
-    }, 2000);
+    }, 1500);
 
-    // Stage 4: Hold Awakening Quote screen for 4.5 seconds so it feels impactful before completing boot
+    // Stage 4: Hold Awakening Quote screen then complete boot
     setTimeout(() => {
-      localStorage.setItem('hasSeenIntro', 'true');
-      onComplete();
-    }, 6500);
+      finishBoot();
+    }, 4500);
   };
 
   const handleDecline = () => {
@@ -130,9 +135,12 @@ const BootScreen = ({ player, onComplete }) => {
         </div>
       )}
 
-      {/* STAGE 4: SYSTEM AWAKENING SCREEN WITH QUOTE (HELD FOR 4.5s) */}
+      {/* STAGE 4: SYSTEM AWAKENING SCREEN WITH QUOTE */}
       {stage === 'awakening_quote' && (
-        <div className="text-center space-y-6 animate-fade-in font-['Share_Tech_Mono'] max-w-2xl px-4">
+        <div 
+          onClick={finishBoot}
+          className="text-center space-y-6 animate-fade-in font-['Share_Tech_Mono'] max-w-2xl px-4 cursor-pointer"
+        >
           <div className="font-['Orbitron'] text-xs tracking-[6px] text-cyan-400 uppercase animate-pulse">
             [ SYSTEM AWAKENING IN PROGRESS ]
           </div>
@@ -147,8 +155,8 @@ const BootScreen = ({ player, onComplete }) => {
             "The weak are consumed by their excuses. The strong adapt, train, and overcome. I am the only one who levels up."
           </p>
 
-          <div className="text-xs text-slate-400 tracking-[3px] uppercase pt-4 animate-pulse">
-            [ HUNTER {hunterName.toUpperCase()} RECOGNIZED • INITIALIZING STATUS WINDOW... ]
+          <div className="text-xs text-cyan-400/80 tracking-[3px] uppercase pt-4 animate-pulse">
+            [ CLICK TO ENTER SYSTEM • INITIALIZING STATUS WINDOW... ]
           </div>
         </div>
       )}
