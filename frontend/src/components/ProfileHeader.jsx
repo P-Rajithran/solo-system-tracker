@@ -1,5 +1,5 @@
 import { getHunterRank } from '../utils/hunterUtils';
-import profilePic from '../assets/avatar.png';
+import profilePic from '../assets/default-avatar.svg';
 
 const ProfileHeader = ({ player }) => {
   const rankInfo = getHunterRank(player?.level || 1);

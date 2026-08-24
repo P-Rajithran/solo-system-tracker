@@ -1,4 +1,4 @@
-import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
+﻿import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -8,7 +8,7 @@ import NutritionPage from './pages/NutritionPage';
 import BootScreen from './components/BootScreen';
 import TrainerPage from './pages/TrainerPage';
 import ElectricParticles from './components/ElectricParticles';
-import defaultAvatar from './assets/avatar.png';
+import defaultAvatar from './assets/default-avatar.svg';
 import LevelUpModal from './components/LevelUpModal';
 import AvatarSelectorModal from './components/AvatarSelectorModal';
 import OnboardingModal from './components/OnboardingModal';
@@ -150,6 +150,7 @@ function App() {
           if (!ignore) {
             setIsAuthenticated(false);
             setShowAuthModal(true);
+            setShowOnboarding(false);
             setIsAuthLoading(false);
           }
           return;
@@ -164,14 +165,13 @@ function App() {
             const authData = await authRes.json();
             if (!ignore) {
               setIsAuthenticated(true);
-              const savedAvatar = localStorage.getItem('hunter_avatar');
               const playerData = authData.player || {};
               fetchedPlayer = playerData;
 
               setPlayer({
                 ...playerData,
                 name: playerData.name || authData.user?.name || 'Hunter',
-                avatarUrl: savedAvatar || playerData.avatarUrl || defaultAvatar
+                avatarUrl: playerData.avatarUrl || defaultAvatar
               });
 
               const isPlayerOnboarded =
@@ -263,11 +263,10 @@ function App() {
     setIsAuthLoading(false);
 
     const playerData = data.player || {};
-    const savedAvatar = localStorage.getItem('hunter_avatar');
     const updatedPlayerObj = {
       ...playerData,
       name: playerData.name || data.user?.name || 'Hunter',
-      avatarUrl: savedAvatar || playerData.avatarUrl || defaultAvatar
+      avatarUrl: playerData.avatarUrl || defaultAvatar
     };
 
     setPlayer(updatedPlayerObj);
@@ -312,6 +311,7 @@ function App() {
     localStorage.removeItem('isOnboarded');
     localStorage.removeItem('hunter_onboarding_profile');
     localStorage.removeItem('hunter_cleared_gates');
+    localStorage.removeItem('hunter_avatar');
 
     setIsAuthenticated(false);
     setIsOnboarded(false);
@@ -391,55 +391,34 @@ function App() {
       });
       const data = await res.json();
 
+      if (data.quest) {
+        setQuest(data.quest);
+        if (data.quest.isCompleted && !quest?.isCompleted) {
+          setShowQuestOverlay(true);
+          playSystemSound('questDone');
+        }
+      }
+
+      if (data.player) {
+        setPlayer((prev) => ({ ...prev, ...data.player }));
+      }
+
+      if (data.limitMessage) {
+        triggerSavedToast({ message: data.limitMessage });
+      }
+
       if (data.newlyUnlocked) {
         handleProcessNewAchievements(data.newlyUnlocked);
       }
 
-      if (data.limitMessage) {
-        triggerSavedToast({
-          message: data.limitMessage
-        });
-      }
-
-      if (data.player) {
-        setPlayer((prev) => {
-          if (data.player.level > (prev?.level || 1)) {
-            setShowLevelUpModal(true);
-            playSystemSound('levelup');
-          }
-          return { ...prev, ...data.player };
-        });
-      }
-      if (data.quest) {
-        setQuest(data.quest);
-      }
+      fetchAnalytics('7', true);
+      fetchAnalytics('30', true);
     } catch (err) {
       console.error('[TOGGLE TASK ERROR]:', err);
     }
   };
 
-  const handleSaveNutrition = async (updatedData) => {
-    // 1. Instant zero-delay toast trigger on click
-    if (updatedData?.currentWeight !== undefined && updatedData?.caloriesConsumed === undefined) {
-      triggerRewardToast({
-        title: 'BODY WEIGHT LOGGED!',
-        earnedText: `+15 XP, +50 GOLD (${updatedData.currentWeight} KG)`,
-        icon: '⚖️'
-      });
-      triggerSavedToast({
-        message: `Body Weight (${updatedData.currentWeight} KG) persisted to System`
-      });
-    } else if (updatedData?.caloriesConsumed !== undefined || updatedData?.proteinGrams !== undefined) {
-      triggerRewardToast({
-        title: 'NUTRITION & MEALS LOGGED!',
-        earnedText: '+15 XP, +1 VIT, +50 GOLD',
-        icon: '🥗'
-      });
-      triggerSavedToast({
-        message: 'Daily Nutrition & Macro metrics persisted to System'
-      });
-    }
-
+  const handleSaveNutrition = async (nutritionData) => {
     try {
       const token = localStorage.getItem('hunter_token');
       const res = await fetch(`${API_BASE_URL}/quests/nutrition`, {
@@ -448,29 +427,26 @@ function App() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(nutritionData)
       });
       const data = await res.json();
+
+      if (data.quest) setQuest(data.quest);
+      if (data.player) {
+        setPlayer((prev) => ({ ...prev, ...data.player }));
+        if (data.player.currentWeight) setWeight(data.player.currentWeight);
+      }
 
       if (data.newlyUnlocked) {
         handleProcessNewAchievements(data.newlyUnlocked);
       }
 
-      if (data.limitMessage) {
-        triggerSavedToast({
-          message: data.limitMessage
-        });
-      }
+      triggerSavedToast({
+        message: 'Physical Metrics updated & +50 Gold Coins awarded!'
+      });
 
-      if (data.player) {
-        setPlayer((prev) => {
-          const next = { ...prev, ...data.player };
-          if (next.currentWeight) setWeight(next.currentWeight);
-          return next;
-        });
-        localStorage.setItem('hunter_onboarding_profile', JSON.stringify(data.player));
-      }
-      if (data.quest) setQuest(data.quest);
+      fetchAnalytics('7', true);
+      fetchAnalytics('30', true);
     } catch (err) {
       console.error('[SAVE NUTRITION ERROR]:', err);
     }
@@ -486,15 +462,9 @@ function App() {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
-      const data = await res.json();
-      if (data.player) {
-        setPlayer((prev) => ({ ...prev, ...data.player, dataAnomalyDetected: false }));
-      } else {
+      if (res.ok) {
         setPlayer((prev) => ({ ...prev, dataAnomalyDetected: false }));
       }
-      triggerSavedToast({
-        message: 'Anomaly advisory dismissed'
-      });
     } catch (err) {
       console.error('[DISMISS ANOMALY ERROR]:', err);
       setPlayer((prev) => ({ ...prev, dataAnomalyDetected: false }));
@@ -578,7 +548,7 @@ function App() {
     goldCoins: 250,
     dungeonClears: 0,
     clearedGates: [],
-        unlockedAchievements: [],
+    unlockedAchievements: [],
     weightHistory: [],
     avatarUrl: defaultAvatar
   };
@@ -783,8 +753,9 @@ function App() {
             onSelectAvatar={(newAvatar) => {
               setPlayer((prev) => {
                 const nextPlayer = { ...prev, avatarUrl: newAvatar };
-                localStorage.setItem('hunter_avatar', newAvatar);
-                localStorage.setItem('hunter_onboarding_profile', JSON.stringify(nextPlayer));
+                if (nextPlayer.userId || nextPlayer._id) {
+                  localStorage.setItem(`hunter_avatar_${nextPlayer.userId || nextPlayer._id}`, newAvatar);
+                }
                 return nextPlayer;
               });
             }}

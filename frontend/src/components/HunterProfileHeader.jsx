@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { getHunterRank, playSystemSound } from '../utils/hunterUtils';
-import defaultAvatar from '../assets/avatar.png';
+import defaultAvatar from '../assets/default-avatar.svg';
 import EditProfileModal from './EditProfileModal';
 
 const HunterProfileHeader = ({ player, onLogout, onUpdateAvatar, onSaveProfile, onOpenShadowTraining }) => {
@@ -46,7 +46,7 @@ const HunterProfileHeader = ({ player, onLogout, onUpdateAvatar, onSaveProfile, 
     reader.readAsDataURL(file);
   };
 
-  const currentAvatar = player?.avatarUrl || localStorage.getItem('hunter_avatar') || defaultAvatar;
+  const currentAvatar = player?.avatarUrl || defaultAvatar;
 
   return (
     <>
