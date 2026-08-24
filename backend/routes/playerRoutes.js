@@ -112,6 +112,18 @@ const handleProfileUpdate = async (req, res) => {
     player.weightHistory = player.weightHistory || [];
     player.weightHistory.push({ date: new Date(), weight: weightNum });
 
+    // Synchronize today's DailyQuest currentWeight
+    const { startOfDay, endOfDay } = getTodayRange();
+    let todayQuest = await DailyQuest.findOne({
+      ...(player.userId ? { userId: player.userId } : {}),
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+    if (todayQuest) {
+      todayQuest.nutrition = todayQuest.nutrition || {};
+      todayQuest.nutrition.currentWeight = weightNum;
+      await todayQuest.save();
+    }
+
     const newlyUnlocked = checkAndUnlockAchievements(player);
     await checkDataAnomaly(player);
     await player.save();
@@ -146,6 +158,18 @@ router.post('/weight', async (req, res) => {
 
     player.weightHistory = player.weightHistory || [];
     player.weightHistory.push({ date: new Date(), weight: weightNum });
+
+    // Synchronize today's DailyQuest currentWeight
+    const { startOfDay, endOfDay } = getTodayRange();
+    let todayQuest = await DailyQuest.findOne({
+      ...(player.userId ? { userId: player.userId } : {}),
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+    if (todayQuest) {
+      todayQuest.nutrition = todayQuest.nutrition || {};
+      todayQuest.nutrition.currentWeight = weightNum;
+      await todayQuest.save();
+    }
 
     const newlyUnlocked = checkAndUnlockAchievements(player);
     const anomalyResult = await checkDataAnomaly(player);

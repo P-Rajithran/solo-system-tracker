@@ -69,13 +69,19 @@ const pushActionLog = (player, logEntry) => {
 router.get('/today', async (req, res) => {
   try {
     const { startOfDay, endOfDay } = getTodayRange();
-    let quest = await DailyQuest.findOne({
-      date: { $gte: startOfDay, $lte: endOfDay }
-    });
+    const player = await getScopedPlayer(req);
+    const userId = player?.userId;
+    const playerWeight = player?.currentWeight || player?.startWeight || 0;
+
+    let query = { date: { $gte: startOfDay, $lte: endOfDay } };
+    if (userId) query.userId = userId;
+
+    let quest = await DailyQuest.findOne(query);
 
     if (!quest) {
-      // Find previous quest to copy over recurring DAILY routines only
-      const previousQuest = await DailyQuest.findOne().sort({ date: -1 });
+      // Find previous quest for this user to copy over recurring DAILY routines only
+      let prevQuery = userId ? { userId } : {};
+      const previousQuest = await DailyQuest.findOne(prevQuery).sort({ date: -1 });
 
       const carriedOverRoutines = (previousQuest?.customTasks || [])
         .filter((task) => task.type === 'daily' && !task.label?.startsWith('[MICRO-QUEST]') && !task.label?.startsWith('GATE CLEAR:'))
@@ -88,13 +94,26 @@ router.get('/today', async (req, res) => {
         }));
 
       quest = await DailyQuest.create({
+        ...(userId ? { userId } : {}),
         date: new Date(),
         tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
         customTasks: carriedOverRoutines,
+        nutrition: {
+          currentWeight: playerWeight > 0 ? playerWeight : (previousQuest?.nutrition?.currentWeight || 0),
+          caloriesConsumed: 0,
+          proteinGrams: 0
+        },
         isCompleted: false,
         dailyXpEarned: 0,
         dailyGoldEarned: 0
       });
+    } else {
+      // Synchronize weight if quest had legacy 70 or 0 while player has actual weight
+      if ((!quest.nutrition?.currentWeight || quest.nutrition?.currentWeight === 70 || quest.nutrition?.currentWeight === 0) && playerWeight > 0) {
+        quest.nutrition = quest.nutrition || {};
+        quest.nutrition.currentWeight = playerWeight;
+        await quest.save();
+      }
     }
 
     const questObj = quest.toObject();
@@ -188,15 +207,20 @@ router.get('/history', async (req, res) => {
 });
 
 // Helper for analytics calculation with range support (week, month, all-time)
-const fetchAnalyticsData = async (rangeParam) => {
+const fetchAnalyticsData = async (req, rangeParam) => {
   let daysCount = 7;
   let isAllTime = false;
+
+  const player = await getScopedPlayer(req);
+  const userId = player?.userId;
+  const playerWeight = player?.currentWeight || player?.startWeight || 0;
 
   if (rangeParam === 'monthly' || rangeParam === 'month' || parseInt(rangeParam, 10) === 30) {
     daysCount = 30;
   } else if (rangeParam === 'all' || rangeParam === 'all-time') {
     isAllTime = true;
-    const earliest = await DailyQuest.findOne().sort({ date: 1 });
+    let earliestQuery = userId ? { userId } : {};
+    const earliest = await DailyQuest.findOne(earliestQuery).sort({ date: 1 });
     if (earliest && earliest.date) {
       const diffMs = new Date().getTime() - new Date(earliest.date).getTime();
       daysCount = Math.max(7, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
@@ -209,9 +233,10 @@ const fetchAnalyticsData = async (rangeParam) => {
   startDate.setDate(startDate.getDate() - daysCount + 1);
   startDate.setHours(0, 0, 0, 0);
 
-  const history = await DailyQuest.find({
-    date: { $gte: startDate }
-  }).sort({ date: 1 });
+  let histQuery = { date: { $gte: startDate } };
+  if (userId) histQuery.userId = userId;
+
+  const history = await DailyQuest.find(histQuery).sort({ date: 1 });
 
   const dailyData = [];
   const now = new Date();
@@ -240,10 +265,15 @@ const fetchAnalyticsData = async (rangeParam) => {
       const totalTasksCount = 3 + (found.customTasks || []).length;
       const completionPct = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
 
+      let foundW = found.nutrition?.currentWeight;
+      if (!foundW || foundW === 70 || foundW === 0) {
+        foundW = playerWeight > 0 ? playerWeight : 0;
+      }
+
       dailyData.push({
         date: dayLabel,
         fullDate: d.toISOString().split('T')[0],
-        weight: found.nutrition?.currentWeight || 0,
+        weight: foundW,
         calories: found.nutrition?.caloriesConsumed || 0,
         protein: found.nutrition?.proteinGrams || 0,
         completedTasks: completedTasksCount,
@@ -261,7 +291,7 @@ const fetchAnalyticsData = async (rangeParam) => {
       dailyData.push({
         date: dayLabel,
         fullDate: d.toISOString().split('T')[0],
-        weight: 0,
+        weight: playerWeight > 0 ? playerWeight : 0,
         calories: 0,
         protein: 0,
         completedTasks: 0,
@@ -281,10 +311,10 @@ const fetchAnalyticsData = async (rangeParam) => {
   const loggedWeights = dailyData.map((d) => d.weight).filter((w) => w > 0);
   const avgWeight = loggedWeights.length > 0
     ? Number((loggedWeights.reduce((a, b) => a + b, 0) / loggedWeights.length).toFixed(1))
-    : 0;
+    : (playerWeight || 0);
 
-  const startWeight = loggedWeights[0] || 0;
-  const latestWeight = loggedWeights[loggedWeights.length - 1] || 0;
+  const startWeight = loggedWeights[0] || player?.startWeight || playerWeight || 0;
+  const latestWeight = loggedWeights[loggedWeights.length - 1] || playerWeight || 0;
   const weightChange = (latestWeight && startWeight) ? Number((latestWeight - startWeight).toFixed(1)) : 0;
 
   const totalQuestsCompleted = dailyData.filter((d) => d.isCompleted).length;
@@ -327,7 +357,7 @@ const fetchAnalyticsData = async (rangeParam) => {
 // GET /api/quests/analytics
 router.get(['/analytics', '/progress'], async (req, res) => {
   try {
-    const data = await fetchAnalyticsData(req.query.range || req.query.days);
+    const data = await fetchAnalyticsData(req, req.query.range || req.query.days);
     res.json(data);
   } catch (err) {
     console.error('[ANALYTICS ERROR]:', err);
@@ -338,7 +368,7 @@ router.get(['/analytics', '/progress'], async (req, res) => {
 // GET convenience routes for weekly and monthly analytics
 router.get('/progress/weekly', async (req, res) => {
   try {
-    const data = await fetchAnalyticsData('7');
+    const data = await fetchAnalyticsData(req, '7');
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -347,7 +377,7 @@ router.get('/progress/weekly', async (req, res) => {
 
 router.get('/progress/monthly', async (req, res) => {
   try {
-    const data = await fetchAnalyticsData('30');
+    const data = await fetchAnalyticsData(req, '30');
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });

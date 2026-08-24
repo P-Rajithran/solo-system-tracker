@@ -17,7 +17,7 @@ const dailyQuestSchema = new mongoose.Schema({
     }
   ],
   nutrition: {
-    currentWeight: { type: Number, default: 70 },
+    currentWeight: { type: Number, default: 0 },
     caloriesConsumed: { type: Number, default: 0 },
     proteinGrams: { type: Number, default: 0 }
   },

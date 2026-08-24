@@ -45,14 +45,20 @@ const ProgressAnalytics = ({ player, analyticsData, onFetchAnalytics }) => {
   const summary = analytics?.summary || {};
   const isMonthly = range === '30';
 
-  const defaultWeight = player?.currentWeight || player?.startWeight || 100;
+  const defaultWeight = player?.currentWeight || player?.startWeight || 105;
 
-  // Ensure timeline always has data to prevent chart collapse
-  const timeline = rawTimeline.length > 0 ? rawTimeline : [
+  // Ensure timeline always has valid data matching user's real weight
+  const timeline = (rawTimeline.length > 0 ? rawTimeline : [
     { date: 'Day 1', weight: defaultWeight, calories: 0, protein: 0, deepWorkHours: 0, sleepHours: 7, completionPct: 0 }
-  ];
+  ]).map((t) => {
+    let w = Number(t.weight);
+    if (!w || isNaN(w) || w <= 0) {
+      w = defaultWeight;
+    }
+    return { ...t, weight: w };
+  });
 
-  const avgW = summary.avgWeight || defaultWeight;
+  const avgW = summary.avgWeight && summary.avgWeight > 0 ? summary.avgWeight : defaultWeight;
   const wChange = summary.weightChange || 0;
   const questRate = summary.avgCompletionRate || 0;
   const questsCompleted = summary.totalQuestsCompleted || 0;
@@ -62,7 +68,7 @@ const ProgressAnalytics = ({ player, analyticsData, onFetchAnalytics }) => {
   const avgSleep = summary.avgSleep || 0;
   const dungeonClears = summary.totalDungeonClears || 0;
 
-  // Compute weight scale bounds
+  // Compute weight scale bounds accurately
   const loggedWeights = timeline.map((t) => t.weight).filter((w) => w > 0);
   const minW = loggedWeights.length > 0 ? Math.min(...loggedWeights) - 1 : Math.max(0, defaultWeight - 5);
   const maxW = loggedWeights.length > 0 ? Math.max(...loggedWeights) + 1 : defaultWeight + 5;

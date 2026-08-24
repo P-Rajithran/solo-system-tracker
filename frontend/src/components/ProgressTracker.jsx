@@ -1,4 +1,4 @@
-import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
+﻿import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { getHunterRank, playSystemSound } from '../utils/hunterUtils';
 
@@ -20,7 +20,12 @@ const ProgressTracker = ({ player }) => {
         if (timeframe === 'monthly') param = '30';
         if (timeframe === 'all-time') param = 'all';
 
-        const res = await fetch(`${API_BASE_URL}/quests/analytics?range=${param}`);
+        const token = localStorage.getItem('hunter_token');
+        const res = await fetch(`${API_BASE_URL}/quests/analytics?range=${param}`, {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
         const data = await res.json();
         if (!ignore) {
           setAnalytics(data);
@@ -57,14 +62,20 @@ const ProgressTracker = ({ player }) => {
   const rawTimeline = analytics?.timeline || [];
   const summary = analytics?.summary || {};
 
-  const defaultWeight = player?.currentWeight || player?.startWeight || 100;
+  const defaultWeight = player?.currentWeight || player?.startWeight || 105;
 
-  // Ensure timeline always has data to prevent chart collapse
-  const timeline = rawTimeline.length > 0 ? rawTimeline : [
+  // Ensure timeline always has valid data matching user's real weight
+  const timeline = (rawTimeline.length > 0 ? rawTimeline : [
     { date: 'Day 1', weight: defaultWeight, calories: 0, protein: 0, deepWorkHours: 0, sleepHours: 7, completionPct: 0 }
-  ];
+  ]).map((t) => {
+    let w = Number(t.weight);
+    if (!w || isNaN(w) || w <= 0) {
+      w = defaultWeight;
+    }
+    return { ...t, weight: w };
+  });
 
-  const avgW = summary.avgWeight || defaultWeight;
+  const avgW = summary.avgWeight && summary.avgWeight > 0 ? summary.avgWeight : defaultWeight;
   const wChange = summary.weightChange || 0;
   const questRate = summary.avgCompletionRate || 0;
   const questsCompleted = summary.totalQuestsCompleted || 0;
@@ -135,29 +146,29 @@ const ProgressTracker = ({ player }) => {
 
       {/* SUMMARY METRICS OVERVIEW */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-['Share_Tech_Mono'] text-xs">
-        {/* WEIGHT STAT */}
+        {/* WEIGHT METRIC */}
         <div className="p-3 bg-[var(--panel-2)] border border-[var(--line)] rounded-sm">
           <div className="text-[10px] text-[var(--text-dim)] font-['Orbitron'] uppercase">AVG WEIGHT</div>
-          <div className="text-lg font-bold text-white font-['Orbitron'] mt-0.5">
+          <div className="text-lg font-bold text-[var(--glow)] font-['Orbitron'] mt-0.5">
             {avgW} kg
           </div>
-          <div className={`text-[10px] font-bold ${wChange <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-            {wChange > 0 ? `+${wChange} kg` : `${wChange} kg`} ({timeframe})
+          <div className={`text-[10px] ${wChange <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {wChange > 0 ? `+${wChange}` : wChange} kg ({timeframe === 'weekly' ? '7d' : timeframe === 'monthly' ? '30d' : 'all'})
           </div>
         </div>
 
-        {/* QUEST CLEAR STAT */}
+        {/* QUEST CLEAR RATE */}
         <div className="p-3 bg-[var(--panel-2)] border border-[var(--line)] rounded-sm">
           <div className="text-[10px] text-[var(--text-dim)] font-['Orbitron'] uppercase">QUEST RATE</div>
-          <div className="text-lg font-bold text-[var(--glow)] font-['Orbitron'] mt-0.5">
+          <div className="text-lg font-bold text-emerald-400 font-['Orbitron'] mt-0.5">
             {questRate}%
           </div>
-          <div className="text-[10px] text-[var(--gold)]">
-            {questsCompleted} / {rawTimeline.length} Days Cleared
+          <div className="text-[10px] text-[var(--text-dim)]">
+            {questsCompleted} / {timeline.length} Days Cleared
           </div>
         </div>
 
-        {/* NUTRITION STAT */}
+        {/* NUTRITION AVERAGE */}
         <div className="p-3 bg-[var(--panel-2)] border border-[var(--line)] rounded-sm">
           <div className="text-[10px] text-[var(--text-dim)] font-['Orbitron'] uppercase">AVG INTAKE</div>
           <div className="text-lg font-bold text-amber-300 font-['Orbitron'] mt-0.5">
@@ -180,31 +191,31 @@ const ProgressTracker = ({ player }) => {
         </div>
       </div>
 
-      {/* GRAPH TABS */}
+      {/* CHART TABS */}
       <div className="flex gap-2 border-b border-[var(--line)] pb-2 overflow-x-auto">
         {[
           { id: 'weight', label: '⚖️ WEIGHT TREND' },
           { id: 'quests', label: '⚔️ QUEST CLEARANCE' },
           { id: 'nutrition', label: '🍖 NUTRITION METRICS' },
           { id: 'discipline', label: '⚡ DEEP WORK & SLEEP' }
-        ].map((tb) => (
+        ].map((tab) => (
           <button
-            key={tb.id}
-            onClick={() => handleTabChange(tb.id)}
+            key={tab.id}
+            onClick={() => handleTabChange(tab.id)}
             className={`font-['Orbitron'] text-[10px] tracking-wider px-3 py-1.5 whitespace-nowrap cursor-pointer transition-all border ${
-              activeTab === tb.id
+              activeTab === tab.id
                 ? 'border-[var(--glow)] bg-[rgba(45,212,255,0.12)] text-[var(--glow)] font-bold'
                 : 'border-[var(--line)] bg-[var(--panel-2)] text-[var(--text-dim)] hover:text-white'
             }`}
           >
-            {tb.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* VISUAL PROGRESS GRAPH DISPLAY */}
+      {/* CHART DISPLAY AREA */}
       <div className="p-3 bg-[#050811] border border-[var(--line)] rounded-sm font-['Share_Tech_Mono']">
-        {/* GRAPH 1: WEIGHT TREND */}
+        {/* VIEW 1: WEIGHT TREND CHART */}
         {activeTab === 'weight' && (
           <div>
             <div className="flex justify-between items-center text-xs mb-3">
@@ -219,7 +230,7 @@ const ProgressTracker = ({ player }) => {
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
                     <div className="absolute -top-7 bg-black border border-[var(--glow)] text-[9px] text-[var(--glow)] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(45,212,255,0.6)]">
-                      {item.date}: {w > 0 ? `${w}kg` : `${defaultWeight}kg`}
+                      {item.date}: {w}kg
                     </div>
                     <span className="text-[9px] text-cyan-300 mb-1 font-bold group-hover:text-white hidden sm:block">
                       {w}
@@ -238,12 +249,12 @@ const ProgressTracker = ({ player }) => {
           </div>
         )}
 
-        {/* GRAPH 2: QUEST CLEARANCE RATE */}
+        {/* VIEW 2: QUEST CLEARANCE */}
         {activeTab === 'quests' && (
           <div>
             <div className="flex justify-between items-center text-xs mb-3">
-              <span className="font-['Orbitron'] text-[11px] text-cyan-400">DAILY QUEST & TASK COMPLETION RATE (%)</span>
-              <span className="text-[var(--glow)] text-[10px]">AVG CLEARANCE: {questRate}%</span>
+              <span className="font-['Orbitron'] text-[11px] text-emerald-400">DAILY QUEST COMPLETION PERCENTAGE</span>
+              <span className="text-[var(--text-dim)] text-[10px]">SUCCESS THRESHOLD: 100%</span>
             </div>
 
             <div className="flex items-end justify-between h-40 pt-6 gap-1 sm:gap-2">
@@ -251,15 +262,21 @@ const ProgressTracker = ({ player }) => {
                 const pct = item.completionPct || 0;
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                    <div className="absolute -top-7 bg-black border border-[var(--glow)] text-[9px] text-cyan-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(45,212,255,0.6)]">
-                      {item.date}: {pct}% ({item.completedTasks || 0}/{item.totalTasks || 3} Tasks)
+                    <div className="absolute -top-7 bg-black border border-emerald-400 text-[9px] text-emerald-400 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(52,211,153,0.6)]">
+                      {item.date}: {pct}% ({item.completedTasks}/{item.totalTasks})
                     </div>
-                    <span className="text-[9px] text-cyan-300 mb-1 font-bold hidden sm:block">
+                    <span className="text-[9px] text-emerald-300 mb-1 font-bold group-hover:text-white hidden sm:block">
                       {pct}%
                     </span>
                     <div
-                      style={{ height: `${Math.max(6, pct)}%` }}
-                      className="w-full transition-all duration-300 rounded-t border-t bg-gradient-to-t from-[#092638] to-[var(--glow)] border-[var(--glow)] shadow-[0_0_10px_rgba(45,212,255,0.6)]"
+                      style={{ height: `${Math.max(8, pct)}%` }}
+                      className={`w-full transition-all duration-300 rounded-t border-t ${
+                        pct >= 100
+                          ? 'bg-gradient-to-t from-emerald-950 to-emerald-400 border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                          : pct > 0
+                          ? 'bg-gradient-to-t from-cyan-950 to-cyan-400 border-cyan-400'
+                          : 'bg-slate-900 border-slate-700'
+                      }`}
                     ></div>
                     <span className="text-[8px] sm:text-[9px] text-[var(--text-dim)] mt-1 truncate max-w-full">
                       {timeframe === 'weekly' ? item.date : (idx % 3 === 0 ? item.date : '')}
@@ -271,29 +288,29 @@ const ProgressTracker = ({ player }) => {
           </div>
         )}
 
-        {/* GRAPH 3: NUTRITION METRICS */}
+        {/* VIEW 3: NUTRITION INTAKE (CALORIES & PROTEIN) */}
         {activeTab === 'nutrition' && (
           <div>
             <div className="flex justify-between items-center text-xs mb-3">
-              <span className="font-['Orbitron'] text-[11px] text-cyan-300">CALORIE INTAKE TRACKER (KCAL)</span>
-              <span className="text-cyan-400 text-[10px]">TARGET: {player?.dailyCalorieTarget || 2200} KCAL</span>
+              <span className="font-['Orbitron'] text-[11px] text-amber-300">CALORIES & PROTEIN CONSUMPTION</span>
+              <span className="text-[var(--text-dim)] text-[10px]">TARGET: {player?.dailyCalorieTarget || 2200} kcal</span>
             </div>
 
             <div className="flex items-end justify-between h-40 pt-6 gap-1 sm:gap-2">
               {timeline.map((item, idx) => {
                 const cal = item.calories || 0;
-                const calPct = Math.min(100, Math.round((cal / maxCal) * 100));
+                const calPct = Math.min(100, Math.max(5, Math.round((cal / maxCal) * 100)));
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                    <div className="absolute -top-7 bg-black border border-[var(--glow)] text-[9px] text-cyan-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(45,212,255,0.6)]">
-                      {item.date}: {cal} kcal | {item.protein || 0}g Protein
+                    <div className="absolute -top-7 bg-black border border-amber-400 text-[9px] text-amber-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(251,191,36,0.6)]">
+                      {item.date}: {cal} kcal • {item.protein || 0}g Prot
                     </div>
-                    <span className="text-[9px] text-cyan-300 mb-1 font-bold hidden sm:block">
-                      {cal}
+                    <span className="text-[9px] text-amber-300 mb-1 font-bold group-hover:text-white hidden sm:block">
+                      {cal > 0 ? cal : '0'}
                     </span>
                     <div
-                      style={{ height: `${Math.max(6, calPct)}%` }}
-                      className="w-full transition-all duration-300 rounded-t border-t bg-gradient-to-t from-[#0a2033] to-[var(--glow)] border-[var(--glow)] shadow-[0_0_8px_rgba(45,212,255,0.5)]"
+                      style={{ height: `${calPct}%` }}
+                      className="w-full transition-all duration-300 rounded-t border-t bg-gradient-to-t from-amber-950/40 to-amber-400 border-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]"
                     ></div>
                     <span className="text-[8px] sm:text-[9px] text-[var(--text-dim)] mt-1 truncate max-w-full">
                       {timeframe === 'weekly' ? item.date : (idx % 3 === 0 ? item.date : '')}
@@ -305,30 +322,29 @@ const ProgressTracker = ({ player }) => {
           </div>
         )}
 
-        {/* GRAPH 4: DISCIPLINE & SLEEP RECOVERY */}
+        {/* VIEW 4: DISCIPLINE (DEEP WORK & SLEEP) */}
         {activeTab === 'discipline' && (
           <div>
             <div className="flex justify-between items-center text-xs mb-3">
-              <span className="font-['Orbitron'] text-[11px] text-cyan-400">DEEP WORK & SLEEP RECOVERY</span>
-              <span className="text-[var(--glow)] text-[10px]">TOTAL DEEP WORK: {deepWorkHrs} HRS</span>
+              <span className="font-['Orbitron'] text-[11px] text-[var(--purple)]">DEEP WORK FOCUS HOURS</span>
+              <span className="text-[var(--text-dim)] text-[10px]">DAILY TARGET: 4+ HOURS</span>
             </div>
 
             <div className="flex items-end justify-between h-40 pt-6 gap-1 sm:gap-2">
               {timeline.map((item, idx) => {
-                const dw = item.deepWorkHours || 0;
-                const slp = item.sleepHours || 0;
-                const dwPct = Math.min(100, Math.round((dw / 12) * 100));
+                const hours = item.deepWorkHours || 0;
+                const hPct = Math.min(100, Math.max(8, Math.round((hours / 10) * 100)));
                 return (
                   <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                    <div className="absolute -top-7 bg-black border border-[var(--glow)] text-[9px] text-cyan-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(45,212,255,0.6)]">
-                      {item.date}: Work {dw}h | Sleep {slp}h
+                    <div className="absolute -top-7 bg-black border border-[var(--purple)] text-[9px] text-purple-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-[0_0_8px_rgba(168,85,247,0.6)]">
+                      {item.date}: {hours} hrs Deep Work • {item.sleepHours || 0}h Sleep
                     </div>
-                    <span className="text-[9px] text-cyan-300 mb-1 font-bold hidden sm:block">
-                      {dw}h
+                    <span className="text-[9px] text-purple-300 mb-1 font-bold group-hover:text-white hidden sm:block">
+                      {hours}h
                     </span>
                     <div
-                      style={{ height: `${Math.max(6, dwPct)}%` }}
-                      className="w-full transition-all duration-300 rounded-t border-t bg-gradient-to-t from-[#071f30] to-[var(--glow)] border-[var(--glow)] shadow-[0_0_8px_rgba(45,212,255,0.5)]"
+                      style={{ height: `${hPct}%` }}
+                      className="w-full transition-all duration-300 rounded-t border-t bg-gradient-to-t from-purple-950/40 to-purple-400 border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
                     ></div>
                     <span className="text-[8px] sm:text-[9px] text-[var(--text-dim)] mt-1 truncate max-w-full">
                       {timeframe === 'weekly' ? item.date : (idx % 3 === 0 ? item.date : '')}
@@ -340,29 +356,6 @@ const ProgressTracker = ({ player }) => {
           </div>
         )}
       </div>
-
-      {/* NEXT RANK MILESTONE VISUAL */}
-      {rankInfo.nextLevelReq && (
-        <div className="p-3 bg-[#0a1120] border border-[var(--glow-dim)] rounded-sm font-['Share_Tech_Mono'] text-xs space-y-2 mt-3">
-          <div className="font-['Orbitron'] text-[11px] text-[var(--glow)] tracking-wider uppercase flex justify-between items-center">
-            <span>[ 🏆 NEXT RANK MILESTONE: {rankInfo.nextRank} ]</span>
-            <span className="text-[var(--gold)] font-bold">LVL {currentLevel} → LVL {rankInfo.nextLevelReq}</span>
-          </div>
-
-          <div className="w-full bg-[#050914] h-2.5 rounded-full overflow-hidden border border-[var(--line)]">
-            <div 
-              className="bg-gradient-to-r from-[var(--glow-dim)] to-[var(--glow)] h-full shadow-[0_0_10px_rgba(45,212,255,0.8)] transition-all duration-700" 
-              style={{ width: `${Math.min(100, Math.max(0, Math.round(((currentLevel - rankInfo.minLevel) / (rankInfo.nextLevelReq - rankInfo.minLevel)) * 100)))}%` }}
-            ></div>
-          </div>
-
-          <div className="flex justify-between items-center text-[10px] text-[var(--text-dim)]">
-            <span>⚡ {rankInfo.nextLevelReq - currentLevel} Level(s) Remaining (~{rankInfo.nextLevelReq - currentLevel} Days of Daily Quests)</span>
-            <span className="text-emerald-400 font-bold">REWARD: {rankInfo.nextRank} UNLOCK</span>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };
