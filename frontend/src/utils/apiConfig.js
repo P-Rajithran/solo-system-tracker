@@ -1,5 +1,5 @@
-﻿// Centralized API Base Configuration
-const envApiUrl = import.meta.env.VITE_API_BASE_URL;
+// Centralized API Base Configuration
+const envApiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL;
 
 const getApiBaseUrl = () => {
   if (!envApiUrl || envApiUrl.trim() === '') {

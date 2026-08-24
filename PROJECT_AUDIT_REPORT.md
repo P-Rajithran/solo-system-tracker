@@ -26,6 +26,7 @@
 
 ---
 
+
 ## 1. Executive Summary
 
 **Solo System** is a full-stack, dark-fantasy gamified fitness, nutrition, and daily habit tracking web application inspired by the manhwa/anime *Solo Leveling*. The platform bridges the gap between gamification and real-world behavioral psychology by converting personal health metrics (body weight, calories, macronutrients, deep work hours, sleep quality, and daily exercise) into RPG mechanics (Level, Experience Points, Stat Allocation, Hunter Ranks, Shadow Army Power, Gate Raids, and System Titles).

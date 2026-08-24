@@ -197,9 +197,9 @@ router.post('/dismiss-anomaly', async (req, res) => {
   }
 });
 
-const calculateStreak = async () => {
+const calculateStreak = async (userId) => {
   try {
-    const quests = await DailyQuest.find({}).sort({ date: -1 });
+    const quests = await DailyQuest.find(userId ? { userId } : {}).sort({ date: -1 });
     let streak = 0;
     for (const q of quests) {
       if (q.isCompleted) streak++;
@@ -215,7 +215,7 @@ const calculateStreak = async () => {
 router.get('/status', async (req, res) => {
   try {
     let player = await getScopedPlayer(req);
-    const streakCount = await calculateStreak();
+    const streakCount = await calculateStreak(player.userId);
     const newlyUnlocked = checkAndUnlockAchievements(player, streakCount);
     await checkDataAnomaly(player);
     if (newlyUnlocked.length > 0 || player.isModified()) {
@@ -299,7 +299,10 @@ router.post('/reset', async (req, res) => {
     }
 
     const { startOfDay, endOfDay } = getTodayRange();
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
+    let quest = await DailyQuest.findOne({
+      ...(player.userId ? { userId: player.userId } : {}),
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
     if (quest) {
       quest.tasks = { workoutCompleted: false, meditationCompleted: false, macrosTracked: false };
       quest.customTasks = [];
@@ -336,6 +339,9 @@ router.get('/history', async (req, res) => {
     }
 
     const player = await getScopedPlayer(req);
+    if (player.userId) {
+      query.userId = player.userId;
+    }
     const historyLogs = await DailyQuest.find(query).sort({ date: 1 });
 
     res.json({

@@ -1,8 +1,8 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const DailyQuest = require('../models/DailyQuest');
 const { checkAndUnlockAchievements } = require('../utils/achievementMechanics');
-const { getScopedPlayer } = require('../utils/authHelper');
+const { getScopedPlayer, getUserIdFromReq } = require('../utils/authHelper');
 
 // CONFIGURABLE DAILY REWARD CAPS (TUNABLE DEFAULTS)
 const DAILY_XP_CAP = 300;
@@ -65,57 +65,66 @@ const pushActionLog = (player, logEntry) => {
   }
 };
 
+// Central helper to retrieve or initialize today's scoped DailyQuest
+const getTodayQuestForReq = async (req) => {
+  const { startOfDay, endOfDay } = getTodayRange();
+  const player = await getScopedPlayer(req);
+  const userId = getUserIdFromReq(req) || player?.userId;
+  const playerWeight = player?.currentWeight || player?.startWeight || 0;
+
+  let query = { date: { $gte: startOfDay, $lte: endOfDay } };
+  if (userId) query.userId = userId;
+
+  let quest = await DailyQuest.findOne(query);
+
+  if (!quest) {
+    // Find previous quest for this user to copy over recurring DAILY routines only
+    let prevQuery = userId ? { userId } : {};
+    const previousQuest = await DailyQuest.findOne(prevQuery).sort({ date: -1 });
+
+    const carriedOverRoutines = (previousQuest?.customTasks || [])
+      .filter((task) => task.type === 'daily' && !task.label?.startsWith('[MICRO-QUEST]') && !task.label?.startsWith('GATE CLEAR:'))
+      .map((task) => ({
+        id: Date.now() + Math.random(),
+        label: task.label,
+        xp: task.xp || 20,
+        type: 'daily',
+        completed: false
+      }));
+
+    quest = await DailyQuest.create({
+      ...(userId ? { userId } : {}),
+      date: new Date(),
+      tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
+      customTasks: carriedOverRoutines,
+      nutrition: {
+        currentWeight: playerWeight > 0 ? playerWeight : (previousQuest?.nutrition?.currentWeight || 0),
+        caloriesConsumed: 0,
+        proteinGrams: 0
+      },
+      isCompleted: false,
+      dailyXpEarned: 0,
+      dailyGoldEarned: 0
+    });
+  } else {
+    if (userId && !quest.userId) {
+      quest.userId = userId;
+      await quest.save();
+    }
+    if ((!quest.nutrition?.currentWeight || quest.nutrition?.currentWeight === 70 || quest.nutrition?.currentWeight === 0) && playerWeight > 0) {
+      quest.nutrition = quest.nutrition || {};
+      quest.nutrition.currentWeight = playerWeight;
+      await quest.save();
+    }
+  }
+
+  return { quest, player, userId, playerWeight };
+};
+
 // GET TODAY'S QUEST (Auto-creates new day & carries over DAILY ROUTINES only)
 router.get('/today', async (req, res) => {
   try {
-    const { startOfDay, endOfDay } = getTodayRange();
-    const player = await getScopedPlayer(req);
-    const userId = player?.userId;
-    const playerWeight = player?.currentWeight || player?.startWeight || 0;
-
-    let query = { date: { $gte: startOfDay, $lte: endOfDay } };
-    if (userId) query.userId = userId;
-
-    let quest = await DailyQuest.findOne(query);
-
-    if (!quest) {
-      // Find previous quest for this user to copy over recurring DAILY routines only
-      let prevQuery = userId ? { userId } : {};
-      const previousQuest = await DailyQuest.findOne(prevQuery).sort({ date: -1 });
-
-      const carriedOverRoutines = (previousQuest?.customTasks || [])
-        .filter((task) => task.type === 'daily' && !task.label?.startsWith('[MICRO-QUEST]') && !task.label?.startsWith('GATE CLEAR:'))
-        .map((task) => ({
-          id: Date.now() + Math.random(),
-          label: task.label,
-          xp: task.xp || 20,
-          type: 'daily',
-          completed: false
-        }));
-
-      quest = await DailyQuest.create({
-        ...(userId ? { userId } : {}),
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: carriedOverRoutines,
-        nutrition: {
-          currentWeight: playerWeight > 0 ? playerWeight : (previousQuest?.nutrition?.currentWeight || 0),
-          caloriesConsumed: 0,
-          proteinGrams: 0
-        },
-        isCompleted: false,
-        dailyXpEarned: 0,
-        dailyGoldEarned: 0
-      });
-    } else {
-      // Synchronize weight if quest had legacy 70 or 0 while player has actual weight
-      if ((!quest.nutrition?.currentWeight || quest.nutrition?.currentWeight === 70 || quest.nutrition?.currentWeight === 0) && playerWeight > 0) {
-        quest.nutrition = quest.nutrition || {};
-        quest.nutrition.currentWeight = playerWeight;
-        await quest.save();
-      }
-    }
-
+    const { quest } = await getTodayQuestForReq(req);
     const questObj = quest.toObject();
     questObj.DAILY_XP_CAP = DAILY_XP_CAP;
     questObj.DAILY_GOLD_CAP = DAILY_GOLD_CAP;
@@ -131,19 +140,7 @@ router.get('/today', async (req, res) => {
 router.post('/custom-task', async (req, res) => {
   try {
     const { label, xp, type, isGateClear } = req.body;
-    const { startOfDay, endOfDay } = getTodayRange();
-
-    let quest = await DailyQuest.findOne({
-      date: { $gte: startOfDay, $lte: endOfDay }
-    });
-
-    if (!quest) {
-      quest = await DailyQuest.create({
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: []
-      });
-    }
+    const { quest } = await getTodayQuestForReq(req);
 
     const newTask = {
       id: Date.now(),
@@ -169,8 +166,11 @@ router.post('/custom-task', async (req, res) => {
 // GET /api/quests/history
 router.get('/history', async (req, res) => {
   try {
+    const userId = getUserIdFromReq(req);
     const range = req.query.range || req.query.filter || req.query.timeframe;
     let query = {};
+    if (userId) query.userId = userId;
+
     let limit = 0;
 
     if (range === 'week' || range === 'weekly' || req.query.days === '7') {
@@ -188,7 +188,7 @@ router.get('/history', async (req, res) => {
       if (req.query.startDate) query.date.$gte = new Date(req.query.startDate);
       if (req.query.endDate) query.date.$lte = new Date(req.query.endDate);
     } else if (range === 'all' || range === 'all-time') {
-      query = {};
+      // all for this user
     } else {
       const daysCount = parseInt(req.query.days || req.query.limit || 14, 10);
       limit = daysCount;
@@ -212,7 +212,7 @@ const fetchAnalyticsData = async (req, rangeParam) => {
   let isAllTime = false;
 
   const player = await getScopedPlayer(req);
-  const userId = player?.userId;
+  const userId = getUserIdFromReq(req) || player?.userId;
   const playerWeight = player?.currentWeight || player?.startWeight || 0;
 
   if (rangeParam === 'monthly' || rangeParam === 'month' || parseInt(rangeParam, 10) === 30) {
@@ -389,19 +389,7 @@ router.put('/toggle', async (req, res) => {
   const { taskName } = req.body;
 
   try {
-    const { startOfDay, endOfDay } = getTodayRange();
-
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
-    let player = await getScopedPlayer(req);
-    
-    if (!quest) {
-      quest = await DailyQuest.create({
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: []
-      });
-    }
-
+    const { quest, player } = await getTodayQuestForReq(req);
     const wasCompletedBefore = quest.isCompleted;
     let isTaskNowCompleted = false;
     let xpGainedForTask = 15;
@@ -474,24 +462,13 @@ router.put('/nutrition', async (req, res) => {
   const { currentWeight, caloriesConsumed, proteinGrams } = req.body;
 
   try {
-    const { startOfDay, endOfDay } = getTodayRange();
-
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
-    if (!quest) {
-      quest = await DailyQuest.create({
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: []
-      });
-    }
+    const { quest, player } = await getTodayQuestForReq(req);
 
     if (currentWeight !== undefined && currentWeight !== '') quest.nutrition.currentWeight = Number(currentWeight);
     if (caloriesConsumed !== undefined && caloriesConsumed !== '') quest.nutrition.caloriesConsumed = Number(caloriesConsumed);
     if (proteinGrams !== undefined && proteinGrams !== '') quest.nutrition.proteinGrams = Number(proteinGrams);
 
     await quest.save();
-
-    let player = await getScopedPlayer(req);
 
     if (currentWeight !== undefined && currentWeight !== '') {
       player.currentWeight = Number(currentWeight);
@@ -529,10 +506,7 @@ router.put('/nutrition', async (req, res) => {
 // POST /api/quests/trigger-penalty
 router.post('/trigger-penalty', async (req, res) => {
   try {
-    let player = await getScopedPlayer(req);
-    const { startOfDay, endOfDay } = getTodayRange();
-
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
+    const { quest, player } = await getTodayQuestForReq(req);
 
     if (player) {
       player.hp = Math.max(0, player.hp - 25);
@@ -554,10 +528,7 @@ router.post('/trigger-penalty', async (req, res) => {
 // POST /api/quests/clear-penalty
 router.post('/clear-penalty', async (req, res) => {
   try {
-    let player = await getScopedPlayer(req);
-    const { startOfDay, endOfDay } = getTodayRange();
-
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
+    const { quest, player } = await getTodayQuestForReq(req);
 
     if (player) {
       player.hp = 100;
@@ -576,10 +547,12 @@ router.post('/clear-penalty', async (req, res) => {
   }
 });
 
-// GET /api/quests/export - Download database as CSV
+// GET /api/quests/export - Download database as CSV for authenticated user
 router.get('/export', async (req, res) => {
   try {
-    const history = await DailyQuest.find().sort({ date: -1 });
+    const userId = getUserIdFromReq(req);
+    const query = userId ? { userId } : {};
+    const history = await DailyQuest.find(query).sort({ date: -1 });
     let csv = 'Date,Weight (kg),Calories,Protein (g),Workout Completed,Meditation Completed,Macros Tracked,Penalty Status,Deep Work (hrs),Sleep (hrs)\n';
     
     history.forEach((q) => {
@@ -599,17 +572,8 @@ router.get('/export', async (req, res) => {
 // PUT /api/quests/life-metrics
 router.put('/life-metrics', async (req, res) => {
   try {
-    const { startOfDay, endOfDay } = getTodayRange();
     const { deepWorkHours, sleepHours, focusRating } = req.body;
-
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
-    if (!quest) {
-      quest = await DailyQuest.create({
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: []
-      });
-    }
+    const { quest, player } = await getTodayQuestForReq(req);
 
     quest.lifeMetrics = {
       deepWorkHours: parseFloat(deepWorkHours) || 0,
@@ -619,7 +583,6 @@ router.put('/life-metrics', async (req, res) => {
 
     await quest.save();
 
-    let player = await getScopedPlayer(req);
     let newlyUnlocked = [];
     let limitMessage = null;
 
@@ -664,7 +627,7 @@ router.post('/claim-gate', async (req, res) => {
     const targetGold = Number(rewardGold) || 100;
     const targetXp = Number(rewardXp) || 150;
 
-    let player = await getScopedPlayer(req);
+    const { quest, player } = await getTodayQuestForReq(req);
 
     player.clearedGates = player.clearedGates || [];
     
@@ -677,16 +640,6 @@ router.post('/claim-gate', async (req, res) => {
         error: `[ NOTICE ]: Rewards for "${gateId}" have already been claimed!`,
         message: `[ NOTICE ]: Rewards for "${gateId}" have already been claimed!`,
         player
-      });
-    }
-
-    const { startOfDay, endOfDay } = getTodayRange();
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
-    if (!quest) {
-      quest = await DailyQuest.create({
-        date: new Date(),
-        tasks: { workoutCompleted: false, meditationCompleted: false, macrosTracked: false },
-        customTasks: []
       });
     }
 
@@ -746,7 +699,7 @@ router.post('/claim-gate', async (req, res) => {
 // POST /api/quests/undo-last - Reverse the most recent logged action
 router.post('/undo-last', async (req, res) => {
   try {
-    let player = await getScopedPlayer(req);
+    const { quest, player } = await getTodayQuestForReq(req);
     if (!player) return res.status(404).json({ error: 'Player profile not found.' });
 
     player.actionHistory = player.actionHistory || [];
@@ -787,9 +740,6 @@ router.post('/undo-last', async (req, res) => {
     await player.save();
 
     // 5. Revert DailyQuest Task/Custom Task completion
-    const { startOfDay, endOfDay } = getTodayRange();
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
-
     if (quest) {
       if (xpAwarded > 0) quest.dailyXpEarned = Math.max(0, (quest.dailyXpEarned || 0) - xpAwarded);
       if (goldAwarded > 0) quest.dailyGoldEarned = Math.max(0, (quest.dailyGoldEarned || 0) - goldAwarded);
@@ -825,7 +775,7 @@ router.post('/undo-last', async (req, res) => {
 router.post('/shadow-training', async (req, res) => {
   try {
     const { taskLabel, notes } = req.body;
-    let player = await getScopedPlayer(req);
+    const { quest, player } = await getTodayQuestForReq(req);
     if (!player) return res.status(404).json({ error: 'Player profile not found.' });
 
     // 15-minute soft cooldown
@@ -842,20 +792,12 @@ router.post('/shadow-training', async (req, res) => {
       }
     }
 
-    // Award flat small micro-quest rewards (+10 XP, +5 Gold)
-    const xpAwarded = 10;
-    const goldAwarded = 5;
+    // Award flat small micro-quest rewards subject to daily caps (+10 XP, +5 Gold)
+    const targetXp = 10;
+    const targetGold = 5;
+    const { xpAwarded, goldAwarded, limitMessage } = applyDailyRewardCaps(quest, player, targetXp, targetGold);
 
-    player.exp = (player.exp || 0) + xpAwarded;
-    player.goldCoins = (player.goldCoins || 0) + goldAwarded;
     player.lastShadowTrainingAt = new Date();
-
-    if (player.exp >= 100) {
-      const levelsGained = Math.floor(player.exp / 100);
-      player.level += levelsGained;
-      player.exp = player.exp % 100;
-      player.availableStatPoints = (player.availableStatPoints || 0) + (levelsGained * 3);
-    }
 
     pushActionLog(player, {
       actionType: 'micro_quest',
@@ -868,8 +810,6 @@ router.post('/shadow-training', async (req, res) => {
     await player.save();
 
     // Log entry to today's DailyQuest customTasks
-    const { startOfDay, endOfDay } = getTodayRange();
-    let quest = await DailyQuest.findOne({ date: { $gte: startOfDay, $lte: endOfDay } });
     if (quest) {
       quest.customTasks = quest.customTasks || [];
       quest.customTasks.push({
@@ -887,7 +827,8 @@ router.post('/shadow-training', async (req, res) => {
       newlyUnlocked,
       xpAwarded,
       goldAwarded,
-      message: `[ TRAINING GROUNDS CLEARED ]: +${xpAwarded} XP & +${goldAwarded} Gold Coins earned!`
+      limitMessage,
+      message: limitMessage || `[ TRAINING GROUNDS CLEARED ]: +${xpAwarded} XP & +${goldAwarded} Gold Coins earned!`
     });
   } catch (err) {
     console.error('[SHADOW TRAINING ERROR]:', err);

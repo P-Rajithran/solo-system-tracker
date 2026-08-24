@@ -32,9 +32,12 @@ const checkDataAnomaly = async (player) => {
   startDate.setDate(startDate.getDate() - ANOMALY_EVALUATION_DAYS + 1);
   startDate.setHours(0, 0, 0, 0);
 
-  const questLogs = await DailyQuest.find({
-    date: { $gte: startDate }
-  }).sort({ date: 1 });
+  const query = { date: { $gte: startDate } };
+  if (player.userId) {
+    query.userId = player.userId;
+  }
+
+  const questLogs = await DailyQuest.find(query).sort({ date: 1 });
 
   // If insufficient data logged (less than 3 days of nutrition entries), skip evaluation
   const validNutritionLogs = questLogs.filter((q) => q.nutrition && q.nutrition.caloriesConsumed > 0);

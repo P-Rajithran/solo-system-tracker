@@ -25,8 +25,14 @@ const getScopedPlayer = async (req) => {
   if (userId) {
     let player = await Player.findOne({ userId });
     if (player) return player;
+    player = new Player({ name: 'Hunter', userId });
+    await player.save();
+    return player;
   }
-  let player = await Player.findOne();
+  let player = await Player.findOne({ userId: { $exists: false } });
+  if (!player) {
+    player = await Player.findOne();
+  }
   if (!player) {
     player = new Player({ name: 'Hunter' });
     await player.save();
