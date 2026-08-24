@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -56,7 +57,7 @@ const EditProfileModal = ({ isOpen, player, onClose, onSaveProfile }) => {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // Update backend via PUT /api/user/profile
-      const res = await fetch('http://localhost:5000/api/user/profile', {
+      const res = await fetch(`${API_BASE_URL}/user/profile`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(payload)

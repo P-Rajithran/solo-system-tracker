@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { getHunterRank, playSystemSound } from '../utils/hunterUtils';
 
@@ -19,7 +20,7 @@ const ProgressTracker = ({ player }) => {
         if (timeframe === 'monthly') param = '30';
         if (timeframe === 'all-time') param = 'all';
 
-        const res = await fetch(`http://localhost:5000/api/quests/analytics?range=${param}`);
+        const res = await fetch(`${API_BASE_URL}/quests/analytics?range=${param}`);
         const data = await res.json();
         if (!ignore) {
           setAnalytics(data);

@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect, useRef } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -41,7 +42,7 @@ const TrainerPage = ({ player, weight, analyticsData }) => {
     setIsTyping(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/trainer/chat', {
+      const res = await fetch(`${API_BASE_URL}/trainer/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

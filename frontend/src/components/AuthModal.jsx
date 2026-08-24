@@ -1,8 +1,7 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { playSystemSound } from '../utils/hunterUtils';
-
-const API_BASE_URL = 'http://localhost:5000';
 
 const decodeJwt = (token) => {
   try {
@@ -109,7 +108,7 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
     } catch (err) {
       console.error('[SYSTEM AUTH ERROR]: Failed to connect to authentication server:', err);
       playSystemSound('penalty');
-      setErrorMessage('Network error: Unable to connect to backend server at http://localhost:5000');
+      setErrorMessage('Network error: Unable to connect to backend server at ${API_ROOT}');
     } finally {
       setLoading(false);
     }

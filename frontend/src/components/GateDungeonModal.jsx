@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -74,7 +75,7 @@ const GateDungeonModal = ({ isOpen, player, quest, onClose, onClaimSuccess, onNa
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      const res = await fetch('http://localhost:5000/api/quests/claim-gate', {
+      const res = await fetch(`${API_BASE_URL}/quests/claim-gate`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -94,7 +95,7 @@ function App() {
   const fetchAnalytics = async (range = '7', force = false) => {
     if (!force && analyticsData[range]) return analyticsData[range];
     try {
-      const res = await fetch(`http://localhost:5000/api/quests/analytics?range=${range}`);
+      const res = await fetch(`${API_BASE_URL}/quests/analytics?range=${range}`);
       if (res.ok) {
         const data = await res.json();
         setAnalyticsData((prev) => ({ ...prev, [range]: data }));
@@ -119,7 +120,7 @@ function App() {
     if (!token) return;
 
     try {
-      const res = await fetch('http://localhost:5000/api/player/status', {
+      const res = await fetch(`${API_BASE_URL}/player/status`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -155,7 +156,7 @@ function App() {
         }
 
         try {
-          const authRes = await fetch('http://localhost:5000/api/auth/me', {
+          const authRes = await fetch(`${API_BASE_URL}/auth/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
 
@@ -215,7 +216,7 @@ function App() {
       }
 
       try {
-        const questRes = await fetch('http://localhost:5000/api/quests/today');
+        const questRes = await fetch(`${API_BASE_URL}/quests/today`);
         const questData = await questRes.json();
         if (!ignore) {
           setQuest(questData);
@@ -233,12 +234,12 @@ function App() {
       }
 
       try {
-        const a7Res = await fetch('http://localhost:5000/api/quests/analytics?range=7');
+        const a7Res = await fetch(`${API_BASE_URL}/quests/analytics?range=7`);
         if (a7Res.ok) {
           const a7Data = await a7Res.json();
           if (!ignore) setAnalyticsData((prev) => ({ ...prev, '7': a7Data }));
         }
-        const a30Res = await fetch('http://localhost:5000/api/quests/analytics?range=30');
+        const a30Res = await fetch(`${API_BASE_URL}/quests/analytics?range=30`);
         if (a30Res.ok) {
           const a30Data = await a30Res.json();
           if (!ignore) setAnalyticsData((prev) => ({ ...prev, '30': a30Data }));
@@ -380,7 +381,7 @@ function App() {
 
     try {
       const token = localStorage.getItem('hunter_token');
-      const res = await fetch('http://localhost:5000/api/quests/toggle', {
+      const res = await fetch(`${API_BASE_URL}/quests/toggle`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -441,7 +442,7 @@ function App() {
 
     try {
       const token = localStorage.getItem('hunter_token');
-      const res = await fetch('http://localhost:5000/api/quests/nutrition', {
+      const res = await fetch(`${API_BASE_URL}/quests/nutrition`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -478,7 +479,7 @@ function App() {
   const handleDismissAnomaly = async () => {
     try {
       const token = localStorage.getItem('hunter_token');
-      const res = await fetch('http://localhost:5000/api/player/dismiss-anomaly', {
+      const res = await fetch(`${API_BASE_URL}/player/dismiss-anomaly`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -503,7 +504,7 @@ function App() {
   const handleAllocateStat = async (statName) => {
     try {
       const token = localStorage.getItem('hunter_token');
-      const res = await fetch('http://localhost:5000/api/player/allocate-stat', {
+      const res = await fetch(`${API_BASE_URL}/player/allocate-stat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -523,7 +524,7 @@ function App() {
   const handleCompleteShadowTraining = async (trainingData) => {
     try {
       const token = localStorage.getItem('hunter_token');
-      const res = await fetch('http://localhost:5000/api/quests/shadow-training', {
+      const res = await fetch(`${API_BASE_URL}/quests/shadow-training`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

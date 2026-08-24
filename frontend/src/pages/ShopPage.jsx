@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -77,7 +78,7 @@ const ShopPage = ({ player, onPlayerUpdate }) => {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      const res = await fetch('http://localhost:5000/api/player/shop/buy', {
+      const res = await fetch(`${API_BASE_URL}/player/shop/buy`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ itemId: item.itemId })

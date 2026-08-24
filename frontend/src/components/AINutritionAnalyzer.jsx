@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -19,7 +20,7 @@ const AINutritionAnalyzer = ({ currentCalories = 0, currentProtein = 0, onApplyM
     playSystemSound('click');
 
     try {
-      const res = await fetch('http://localhost:5000/api/nutrition/analyze', {
+      const res = await fetch(`${API_BASE_URL}/nutrition/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
 import { useState, useEffect } from 'react';
 import ProfileHeader from './components/ProfileHeader';
 import StatsPanel from './components/StatsPanel';
@@ -15,8 +16,8 @@ const StatusWindow = () => {
     const fetchSystemData = async () => {
       try {
         const [playerRes, questRes] = await Promise.all([
-          fetch('http://localhost:5000/api/player/status'),
-          fetch('http://localhost:5000/api/quests/today')
+          fetch(`${API_BASE_URL}/player/status`),
+          fetch(`${API_BASE_URL}/quests/today`)
         ]);
 
         const playerData = await playerRes.json();
@@ -39,7 +40,7 @@ const StatusWindow = () => {
 
   const handleToggleTask = async (taskName) => {
     try {
-      const res = await fetch('http://localhost:5000/api/quests/toggle', {
+      const res = await fetch(`${API_BASE_URL}/quests/toggle`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taskName })
@@ -54,7 +55,7 @@ const StatusWindow = () => {
 
   const handleAllocateStat = async (statName) => {
     try {
-      const res = await fetch('http://localhost:5000/api/player/allocate-stat', {
+      const res = await fetch(`${API_BASE_URL}/player/allocate-stat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statName })
@@ -68,7 +69,7 @@ const StatusWindow = () => {
 
   const handleSaveNutrition = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/quests/nutrition', {
+      const res = await fetch(`${API_BASE_URL}/quests/nutrition`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentWeight: weight, caloriesConsumed: calories, proteinGrams: protein })
@@ -88,7 +89,7 @@ const StatusWindow = () => {
 
   const handleClearPenalty = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/quests/clear-penalty', { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/quests/clear-penalty`, { method: 'POST' });
       const data = await res.json();
       setQuest(data.quest);
       setPlayer(data.player);

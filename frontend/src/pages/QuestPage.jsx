@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import BossRaidCard from '../components/BossRaidCard';
 import { playSystemSound } from '../utils/hunterUtils';
@@ -53,7 +54,7 @@ const QuestPage = ({ player, quest, onToggleTask, onTriggerPenalty, onAddTask, o
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      const res = await fetch('http://localhost:5000/api/quests/undo-last', {
+      const res = await fetch(`${API_BASE_URL}/quests/undo-last`, {
         method: 'POST',
         headers
       });

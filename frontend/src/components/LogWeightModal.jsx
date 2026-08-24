@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
@@ -26,7 +27,7 @@ const LogWeightModal = ({ isOpen, currentWeight, onClose, onSaveWeight }) => {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
-      await fetch('http://localhost:5000/api/player/weight', {
+      await fetch(`${API_BASE_URL}/player/weight`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ weight: parsed })

@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 import ProgressAnalytics from '../components/ProgressAnalytics';
@@ -64,7 +65,7 @@ const NutritionPage = ({
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      const res = await fetch('http://localhost:5000/api/quests/life-metrics', {
+      const res = await fetch(`${API_BASE_URL}/quests/life-metrics`, {
         method: 'PUT',
         headers,
         body: JSON.stringify({
@@ -96,7 +97,7 @@ const NutritionPage = ({
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      await fetch('http://localhost:5000/api/player/weight', {
+      await fetch(`${API_BASE_URL}/player/weight`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ weight: weightNum })
@@ -116,7 +117,7 @@ const NutritionPage = ({
   };
 
   const handleExportCSV = () => {
-    window.open('http://localhost:5000/api/quests/export', '_blank');
+    window.open(`${API_BASE_URL}/quests/export`, '_blank');
   };
 
   return (

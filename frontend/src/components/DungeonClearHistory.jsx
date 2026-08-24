@@ -1,3 +1,4 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { playSystemSound } from '../utils/hunterUtils';
 
 const DungeonClearHistory = ({ player, quest }) => {
@@ -22,7 +23,7 @@ const DungeonClearHistory = ({ player, quest }) => {
         ...(token ? { 'Authorization': `Bearer ${token}` } : {})
       };
 
-      await fetch('http://localhost:5000/api/player/allocate-stat', {
+      await fetch(`${API_BASE_URL}/player/allocate-stat`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ statKey: 'STR' })

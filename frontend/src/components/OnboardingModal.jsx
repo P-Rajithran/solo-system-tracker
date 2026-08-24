@@ -1,7 +1,8 @@
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { playSystemSound } from '../utils/hunterUtils';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+// API_BASE_URL imported from apiConfig
 
 const computeLocalOnboardingTargets = (data) => {
   const currentW = parseFloat(data.currentWeight) || 70;
