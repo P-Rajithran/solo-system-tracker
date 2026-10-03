@@ -23,9 +23,17 @@ import SavedDataToast from './components/SavedDataToast';
 import ShadowTrainingModal from './components/ShadowTrainingModal';
 import { playSystemSound } from './utils/hunterUtils';
 
+// =========================================================================
+// SYSTEM ACCESS CONFIGURATION FLAG
+// Set to false to bypass login and enter dashboard straight away.
+// Set to true later to re-enable authentication requirements.
+// =========================================================================
+const REQUIRE_LOGIN = false;
+
 function App() {
   // 1. Splash Screen & Intro Bypass
   const [isBooting, setIsBooting] = useState(() => {
+    if (!REQUIRE_LOGIN) return false;
     const hasSeenIntro = localStorage.getItem('hasSeenIntro') === 'true';
     const token = localStorage.getItem('hunter_token');
     return !hasSeenIntro && !token;
@@ -33,6 +41,7 @@ function App() {
 
   // 2. Synchronous Auth & Session Expiry Check (30 Days)
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (!REQUIRE_LOGIN) return true;
     const token = localStorage.getItem('hunter_token');
     const expiry = localStorage.getItem('hunter_session_expiry');
     if (!token) return false;
@@ -46,6 +55,7 @@ function App() {
 
   // 3. Synchronous Onboarding Status Hydration directly from localStorage
   const [isOnboarded, setIsOnboarded] = useState(() => {
+    if (!REQUIRE_LOGIN) return true;
     return (
       localStorage.getItem('hunter_is_onboarded') === 'true' ||
       localStorage.getItem('isOnboarded') === 'true'
@@ -53,14 +63,11 @@ function App() {
   });
 
   // 4. Loading guard state for backend profile synchronization
-  const [isAuthLoading, setIsAuthLoading] = useState(() => {
-    const token = localStorage.getItem('hunter_token');
-    return Boolean(token);
-  });
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   // Modals & System Greeting state
-  const [showAuthModal, setShowAuthModal] = useState(() => !isAuthenticated);
-  const [showOnboarding, setShowOnboarding] = useState(() => isAuthenticated && !isOnboarded);
+  const [showAuthModal, setShowAuthModal] = useState(() => REQUIRE_LOGIN && !isAuthenticated);
+  const [showOnboarding, setShowOnboarding] = useState(() => REQUIRE_LOGIN && isAuthenticated && !isOnboarded);
   const [showQuestOverlay, setShowQuestOverlay] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
@@ -215,9 +222,14 @@ function App() {
             } else {
               localStorage.removeItem('hunter_token');
               if (!ignore) {
-                setIsAuthenticated(false);
-                setShowAuthModal(true);
-                setShowOnboarding(false);
+                if (REQUIRE_LOGIN) {
+                  setIsAuthenticated(false);
+                  setShowAuthModal(true);
+                  setShowOnboarding(false);
+                } else {
+                  setIsAuthenticated(true);
+                  setShowAuthModal(false);
+                }
               }
             }
           } catch (err) {
@@ -228,9 +240,16 @@ function App() {
         }
       } else {
         if (!ignore) {
-          setIsAuthenticated(false);
-          setShowAuthModal(true);
-          setShowOnboarding(false);
+          if (REQUIRE_LOGIN) {
+            setIsAuthenticated(false);
+            setShowAuthModal(true);
+            setShowOnboarding(false);
+          } else {
+            setIsAuthenticated(true);
+            setIsOnboarded(true);
+            setShowAuthModal(false);
+            setShowOnboarding(false);
+          }
           setIsAuthLoading(false);
         }
       }
@@ -672,8 +691,8 @@ function App() {
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] font-['Rajdhani'] p-3 sm:p-4 max-w-4xl mx-auto relative antialiased z-0">
         <ElectricParticles />
 
-        {/* AUTH MODAL BLOCKING ACCESS IF UNAUTHENTICATED */}
-        {showAuthModal && !isAuthenticated && (
+        {/* AUTH MODAL BLOCKING ACCESS IF UNAUTHENTICATED (ONLY WHEN REQUIRE_LOGIN IS TRUE) */}
+        {REQUIRE_LOGIN && showAuthModal && !isAuthenticated && (
           <AuthModal 
             isOpen={showAuthModal} 
             onAuthSuccess={handleLoginSuccess} 
@@ -681,7 +700,7 @@ function App() {
         )}
 
         {/* ONBOARDING MODAL BLOCKING ACCESS FOR NEW UNCONFIGURED ACCOUNTS ONLY */}
-        {showOnboarding && isAuthenticated && (
+        {REQUIRE_LOGIN && showOnboarding && isAuthenticated && (
           <OnboardingModal
             isOpen={showOnboarding}
             initialData={activePlayer}
@@ -689,8 +708,8 @@ function App() {
           />
         )}
 
-        {/* MAIN DASHBOARD CONTENT */}
-        {!showAuthModal && !showOnboarding && (
+        {/* MAIN DASHBOARD CONTENT - ACCESSIBLE DIRECTLY WHEN REQUIRE_LOGIN IS FALSE */}
+        {(!REQUIRE_LOGIN || (!showAuthModal && !showOnboarding)) && (
           <>
             {/* SINGLE SOURCE OF TRUTH: TOP-LEVEL HUNTER PROFILE HEADER */}
             <HunterProfileHeader 
