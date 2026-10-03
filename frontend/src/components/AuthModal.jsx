@@ -1,4 +1,4 @@
-﻿import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
+import { API_BASE_URL, API_ROOT } from '../utils/apiConfig';
 import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { playSystemSound } from '../utils/hunterUtils';
@@ -108,9 +108,46 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
     } catch (err) {
       console.error('[SYSTEM AUTH ERROR]: Failed to connect to authentication server:', err);
       playSystemSound('penalty');
-      setErrorMessage('Network error: Unable to reach backend server. Please verify network connection.');
+      setErrorMessage('Network error: Unable to reach backend server. Please verify network connection or enter as Guest Hunter.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGuestAccess = () => {
+    playSystemSound('levelUp');
+    const guestUser = {
+      id: 'guest_hunter_001',
+      email: 'jinwoo@monarch.system',
+      name: 'Sung Jinwoo'
+    };
+    const guestPlayer = {
+      name: 'Sung Jinwoo',
+      level: 1,
+      rank: 'E-Rank',
+      title: 'Wolf Slayer',
+      exp: 45,
+      goldCoins: 250,
+      stats: { STR: 12, VIT: 12, MEN: 10, DIS: 10 },
+      availableStatPoints: 3,
+      currentWeight: 72,
+      targetWeight: 68,
+      startWeight: 75,
+      dailyCalorieTarget: 2200,
+      dailyProteinTarget: 150,
+      isSetupComplete: true,
+      isOnboarded: true
+    };
+    const mockToken = 'mock_guest_token_' + Date.now();
+    localStorage.setItem('hunter_token', mockToken);
+    const expiryTime = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    localStorage.setItem('hunter_session_expiry', expiryTime.toString());
+    localStorage.setItem('hunter_is_onboarded', 'true');
+    localStorage.setItem('isOnboarded', 'true');
+    localStorage.setItem('hunter_onboarding_profile', JSON.stringify(guestPlayer));
+
+    if (onAuthSuccess) {
+      onAuthSuccess({ token: mockToken, user: guestUser, player: guestPlayer });
     }
   };
 
@@ -214,9 +251,31 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
 
         {/* ERROR ALARM BANNER */}
         {errorMessage && (
-          <div className="p-3 bg-red-950/90 border border-red-500 text-red-300 font-['Orbitron'] text-xs tracking-wider animate-pulse flex items-start gap-2">
-            <span className="shrink-0 font-bold">[ SYSTEM ERROR ]:</span>
-            <span className="break-words flex-1 font-mono text-xs">{errorMessage}</span>
+          <div className="p-3 bg-red-950/90 border border-red-500 text-red-300 font-['Orbitron'] text-xs tracking-wider animate-pulse flex flex-col gap-2">
+            <div className="flex items-start gap-2">
+              <span className="shrink-0 font-bold">[ SYSTEM ERROR ]:</span>
+              <span className="break-words flex-1 font-mono text-xs">{errorMessage}</span>
+            </div>
+            {errorMessage.toLowerCase().includes('register') && mode === 'login' && (
+              <button
+                type="button"
+                onClick={() => { setMode('register'); setErrorMessage(''); }}
+                className="mt-1 bg-purple-900/70 hover:bg-purple-800 border border-purple-400 text-purple-200 py-1.5 px-3 text-[11px] font-['Orbitron'] tracking-wider uppercase transition-all cursor-pointer text-left flex items-center gap-2"
+              >
+                <span>⚡</span>
+                <span>Click here to SWITCH TO REGISTER TAB</span>
+              </button>
+            )}
+            {(errorMessage.toLowerCase().includes('backend') || errorMessage.toLowerCase().includes('network')) && (
+              <button
+                type="button"
+                onClick={handleGuestAccess}
+                className="mt-1 bg-cyan-900/70 hover:bg-cyan-800 border border-cyan-400 text-cyan-200 py-1.5 px-3 text-[11px] font-['Orbitron'] tracking-wider uppercase transition-all cursor-pointer text-left flex items-center gap-2"
+              >
+                <span>⚔️</span>
+                <span>Click here to ENTER AS GUEST HUNTER (DEMO MODE)</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -309,6 +368,24 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
             {loading ? '[ TRANSMITTING CREDENTIALS... ]' : mode === 'login' ? '[ ACCESS SYSTEM ]' : '[ AWAKEN HUNTER ACCOUNT ]'}
           </button>
         </form>
+
+        {/* INSTANT GUEST PASS ACCESS */}
+        <div className="pt-1">
+          <div className="flex items-center my-2 gap-2">
+            <div className="h-[1px] bg-[var(--line)] flex-1"></div>
+            <span className="text-[10px] font-['Orbitron'] text-[var(--gold)] uppercase tracking-wider">OR QUICK ACCESS</span>
+            <div className="h-[1px] bg-[var(--line)] flex-1"></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGuestAccess}
+            className="w-full bg-[#0a1220] hover:bg-[#111e33] border border-[var(--gold)]/70 text-[var(--gold)] font-['Orbitron'] font-bold text-xs tracking-[2px] py-2.5 uppercase transition-all shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:shadow-[0_0_20px_rgba(255,215,0,0.45)] cursor-pointer flex items-center justify-center gap-2"
+          >
+            <span>⚔️</span>
+            <span>ENTER AS GUEST HUNTER (INSTANT ACCESS)</span>
+          </button>
+        </div>
 
         {/* OFFICIAL GOOGLE OAUTH (CONDITIONALLY RENDERED ONLY WHEN VALID CLIENT ID IS SET) */}
         {isGoogleConfigured && (

@@ -1,6 +1,12 @@
-﻿const dns = require('dns');
-dns.setDefaultResultOrder('ipv4first');
-dns.setServers(['8.8.8.8', '1.1.1.1']);
+const dns = require('dns');
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  // Ignore DNS setServers errors if not supported in environment
+}
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -15,16 +21,32 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
+const LOCAL_MONGO_URI = 'mongodb://127.0.0.1:27017/solo-system-tracker';
 
-// Initialize Mongoose Safely
-if (MONGO_URI) {
-  mongoose
-    .connect(MONGO_URI)
-    .then(() => console.log('[SYSTEM ALARM]: Database connected successfully.'))
-    .catch((err) => console.error('[SYSTEM ERROR]: Database connection failed:', err.message));
-} else {
-  console.warn('[SYSTEM WARNING]: MONGO_URI is missing from .env file.');
-}
+// Initialize Mongoose with Resilient Automatic Fallback
+const connectDatabase = async () => {
+  if (MONGO_URI) {
+    try {
+      console.log('[SYSTEM NOTICE]: Attempting connection to primary MongoDB Atlas...');
+      await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 4000 });
+      console.log('[SYSTEM ALARM]: Database connected successfully to MongoDB Atlas.');
+      return;
+    } catch (err) {
+      console.warn('[SYSTEM WARNING]: Primary MongoDB Atlas connection failed:', err.message);
+      console.log('[SYSTEM NOTICE]: Attempting fallback to LOCAL MongoDB instance...');
+    }
+  }
+
+  try {
+    await mongoose.connect(LOCAL_MONGO_URI, { serverSelectionTimeoutMS: 4000 });
+    console.log('[SYSTEM ALARM]: Connected to LOCAL MongoDB fallback successfully.');
+  } catch (localErr) {
+    console.warn('[SYSTEM WARNING]: Local MongoDB fallback also unreachable:', localErr.message);
+    console.warn('[SYSTEM NOTICE]: Server running in resilient mode.');
+  }
+};
+
+connectDatabase();
 
 // Router Modules
 try {

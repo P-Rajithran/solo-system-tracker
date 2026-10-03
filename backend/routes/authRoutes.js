@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -17,13 +18,17 @@ router.post('/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: 'Database is currently offline. Please ensure MongoDB is running or resume your MongoDB Atlas cluster.' });
+    }
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
-      return res.status(400).json({ error: 'Hunter account with this email already exists' });
+      return res.status(400).json({ error: 'Hunter account with this email already exists. Please log in instead.' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -72,18 +77,22 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: 'Database is currently offline. Please ensure MongoDB is running or resume your MongoDB Atlas cluster.' });
+    }
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid Hunter email or password' });
+      return res.status(401).json({ error: 'No Hunter account found with this email. Please switch to the "REGISTER" tab to awaken your account first.' });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash || '');
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid Hunter email or password' });
+      return res.status(401).json({ error: 'Incorrect Hunter password. Please check your credentials and try again.' });
     }
 
     let player = await Player.findOne({ userId: user._id });

@@ -1,4 +1,4 @@
-﻿import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
+import { API_BASE_URL, API_ROOT } from './utils/apiConfig';
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
@@ -156,55 +156,75 @@ function App() {
           return;
         }
 
-        try {
-          const authRes = await fetch(`${API_BASE_URL}/auth/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-
-          if (authRes.ok) {
-            const authData = await authRes.json();
-            if (!ignore) {
-              setIsAuthenticated(true);
-              const playerData = authData.player || {};
-              fetchedPlayer = playerData;
-
-              setPlayer({
-                ...playerData,
-                name: playerData.name || authData.user?.name || 'Hunter',
-                avatarUrl: playerData.avatarUrl || defaultAvatar
-              });
-
-              const isPlayerOnboarded =
-                localStorage.getItem('hunter_is_onboarded') === 'true' ||
-                localStorage.getItem('isOnboarded') === 'true' ||
-                playerData.isSetupComplete === true ||
-                playerData.isOnboarded === true;
-
-              if (isPlayerOnboarded) {
-                localStorage.setItem('hunter_is_onboarded', 'true');
-                localStorage.setItem('isOnboarded', 'true');
+        if (token.startsWith('mock_guest_token_')) {
+          const savedProfile = localStorage.getItem('hunter_onboarding_profile');
+          if (savedProfile) {
+            try {
+              const guestData = JSON.parse(savedProfile);
+              if (!ignore) {
+                setIsAuthenticated(true);
+                setPlayer(guestData);
                 setIsOnboarded(true);
                 setShowOnboarding(false);
                 setShowAuthModal(false);
-              } else {
-                setIsOnboarded(false);
-                setShowOnboarding(true);
-                setShowAuthModal(false);
-                setSystemGreeting('[ SYSTEM NOTICE ]: Welcome New Hunter! Complete your baseline evaluation to activate System Tracking.');
+                setIsAuthLoading(false);
+                fetchedPlayer = guestData;
               }
-            }
-          } else {
-            localStorage.removeItem('hunter_token');
-            if (!ignore) {
-              setIsAuthenticated(false);
-              setShowAuthModal(true);
-              setShowOnboarding(false);
+            } catch (e) {
+              console.warn('Failed to parse guest profile:', e);
             }
           }
-        } catch (err) {
-          console.error('[AUTH CHECK ERROR]:', err);
-        } finally {
-          if (!ignore) setIsAuthLoading(false);
+        } else {
+          try {
+            const authRes = await fetch(`${API_BASE_URL}/auth/me`, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (authRes.ok) {
+              const authData = await authRes.json();
+              if (!ignore) {
+                setIsAuthenticated(true);
+                const playerData = authData.player || {};
+                fetchedPlayer = playerData;
+
+                setPlayer({
+                  ...playerData,
+                  name: playerData.name || authData.user?.name || 'Hunter',
+                  avatarUrl: playerData.avatarUrl || defaultAvatar
+                });
+
+                const isPlayerOnboarded =
+                  localStorage.getItem('hunter_is_onboarded') === 'true' ||
+                  localStorage.getItem('isOnboarded') === 'true' ||
+                  playerData.isSetupComplete === true ||
+                  playerData.isOnboarded === true;
+
+                if (isPlayerOnboarded) {
+                  localStorage.setItem('hunter_is_onboarded', 'true');
+                  localStorage.setItem('isOnboarded', 'true');
+                  setIsOnboarded(true);
+                  setShowOnboarding(false);
+                  setShowAuthModal(false);
+                } else {
+                  setIsOnboarded(false);
+                  setShowOnboarding(true);
+                  setShowAuthModal(false);
+                  setSystemGreeting('[ SYSTEM NOTICE ]: Welcome New Hunter! Complete your baseline evaluation to activate System Tracking.');
+                }
+              }
+            } else {
+              localStorage.removeItem('hunter_token');
+              if (!ignore) {
+                setIsAuthenticated(false);
+                setShowAuthModal(true);
+                setShowOnboarding(false);
+              }
+            }
+          } catch (err) {
+            console.error('[AUTH CHECK ERROR]:', err);
+          } finally {
+            if (!ignore) setIsAuthLoading(false);
+          }
         }
       } else {
         if (!ignore) {
@@ -217,20 +237,41 @@ function App() {
 
       try {
         const questRes = await fetch(`${API_BASE_URL}/quests/today`);
-        const questData = await questRes.json();
-        if (!ignore) {
-          setQuest(questData);
-          if (questData.nutrition) {
-            const activeWeight = (questData.nutrition.currentWeight > 0)
-              ? questData.nutrition.currentWeight 
-              : (fetchedPlayer?.currentWeight || fetchedPlayer?.startWeight || '');
-            if (activeWeight) setWeight(activeWeight);
-            setCalories(questData.nutrition.caloriesConsumed || 0);
-            setProtein(questData.nutrition.proteinGrams || 0);
+        if (questRes.ok) {
+          const questData = await questRes.json();
+          if (!ignore) {
+            setQuest(questData);
+            if (questData.nutrition) {
+              const activeWeight = (questData.nutrition.currentWeight > 0)
+                ? questData.nutrition.currentWeight 
+                : (fetchedPlayer?.currentWeight || fetchedPlayer?.startWeight || '');
+              if (activeWeight) setWeight(activeWeight);
+              setCalories(questData.nutrition.caloriesConsumed || 0);
+              setProtein(questData.nutrition.proteinGrams || 0);
+            }
           }
         }
       } catch (err) {
-        console.error('[QUEST FETCH ERROR]:', err);
+        console.warn('[QUEST FETCH NOTICE]:', err.message);
+        if (!ignore) {
+          setQuest((prev) => prev || {
+            date: new Date().toISOString().split('T')[0],
+            tasks: {
+              pushupsCompleted: false,
+              situpsCompleted: false,
+              squatsCompleted: false,
+              runningCompleted: false,
+              stretchingCompleted: false,
+              workoutCompleted: false
+            },
+            nutrition: {
+              currentWeight: 72,
+              caloriesConsumed: 0,
+              proteinGrams: 0
+            },
+            allDailyQuestsCleared: false
+          });
+        }
       }
 
       try {
@@ -414,7 +455,26 @@ function App() {
       fetchAnalytics('7', true);
       fetchAnalytics('30', true);
     } catch (err) {
-      console.error('[TOGGLE TASK ERROR]:', err);
+      console.warn('[TOGGLE TASK OFFLINE SYNC]:', err.message);
+      setQuest((prev) => {
+        if (!prev) return prev;
+        const currentDone = prev.tasks?.[taskName] ?? false;
+        return {
+          ...prev,
+          tasks: {
+            ...prev.tasks,
+            [taskName]: !currentDone
+          }
+        };
+      });
+      setPlayer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exp: (prev.exp || 0) + 20,
+          goldCoins: (prev.goldCoins || 0) + 15
+        };
+      });
     }
   };
 
@@ -487,7 +547,18 @@ function App() {
         setPlayer(data);
       }
     } catch (err) {
-      console.error('[ALLOCATE STAT ERROR]:', err);
+      console.warn('[ALLOCATE STAT OFFLINE SYNC]:', err.message);
+      setPlayer((prev) => {
+        if (!prev || (prev.availableStatPoints || 0) <= 0) return prev;
+        return {
+          ...prev,
+          availableStatPoints: (prev.availableStatPoints || 1) - 1,
+          stats: {
+            ...prev.stats,
+            [statName]: (prev.stats?.[statName] || 10) + 1
+          }
+        };
+      });
     }
   };
 
