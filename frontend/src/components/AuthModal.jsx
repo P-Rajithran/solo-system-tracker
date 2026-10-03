@@ -84,6 +84,9 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
       }
 
       if (!res.ok) {
+        if (res.status === 404 || !contentType || !contentType.includes('application/json')) {
+          throw new Error('API_ROUTE_UNAVAILABLE');
+        }
         playSystemSound('penalty');
         setErrorMessage(data.error || data.message || `Authentication failed (HTTP ${res.status})`);
         setLoading(false);
@@ -91,10 +94,7 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
       }
 
       if (!data.token) {
-        playSystemSound('penalty');
-        setErrorMessage('Server returned an invalid session token.');
-        setLoading(false);
-        return;
+        throw new Error('INVALID_TOKEN_RESPONSE');
       }
 
       playSystemSound('levelUp');
@@ -106,9 +106,97 @@ const AuthModal = ({ isOpen, onAuthSuccess }) => {
         onAuthSuccess(data);
       }
     } catch (err) {
-      console.error('[SYSTEM AUTH ERROR]: Failed to connect to authentication server:', err);
-      playSystemSound('penalty');
-      setErrorMessage('Network error: Unable to reach backend server. Please verify network connection or enter as Guest Hunter.');
+      console.warn('[SYSTEM AUTH NOTICE]: External backend unavailable (' + err.message + '). Activating Offline-First Local Hunter Engine.');
+      
+      const storedUsersRaw = localStorage.getItem('solo_system_local_users');
+      let localUsers = [];
+      try {
+        localUsers = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+      } catch {
+        localUsers = [];
+      }
+
+      if (mode === 'register') {
+        const existing = localUsers.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
+        if (existing) {
+          playSystemSound('penalty');
+          setErrorMessage('Hunter account with this email already exists on this device. Please log in.');
+          setLoading(false);
+          return;
+        }
+
+        const newUserId = 'local_user_' + Date.now();
+        const newPlayer = {
+          name: cleanName || 'Hunter',
+          userId: newUserId,
+          level: 1,
+          rank: 'E-Rank',
+          exp: 0,
+          goldCoins: 100,
+          stats: { STR: 10, VIT: 10, MEN: 10, DIS: 10 },
+          availableStatPoints: 5,
+          currentWeight: 70,
+          targetWeight: 65,
+          startWeight: 70,
+          dailyCalorieTarget: 2000,
+          dailyProteinTarget: 140,
+          isSetupComplete: true,
+          isOnboarded: true
+        };
+
+        const newUser = {
+          id: newUserId,
+          email: cleanEmail.toLowerCase(),
+          password: password,
+          name: cleanName || 'Hunter',
+          player: newPlayer
+        };
+
+        localUsers.push(newUser);
+        localStorage.setItem('solo_system_local_users', JSON.stringify(localUsers));
+
+        const localToken = 'solo_local_token_' + Date.now();
+        localStorage.setItem('hunter_token', localToken);
+        localStorage.setItem('hunter_session_expiry', (Date.now() + 30 * 24 * 60 * 60 * 1000).toString());
+        localStorage.setItem('hunter_is_onboarded', 'true');
+        localStorage.setItem('isOnboarded', 'true');
+        localStorage.setItem('hunter_onboarding_profile', JSON.stringify(newPlayer));
+
+        playSystemSound('levelUp');
+        if (onAuthSuccess) {
+          onAuthSuccess({ token: localToken, user: newUser, player: newPlayer });
+        }
+        return;
+      } else {
+        // Mode is login
+        const existing = localUsers.find(u => u.email.toLowerCase() === cleanEmail.toLowerCase());
+        if (!existing) {
+          playSystemSound('penalty');
+          setErrorMessage('Hunter account not found on this device. Please click "REGISTER" above to awaken your account, or use Instant Guest Access.');
+          setLoading(false);
+          return;
+        }
+
+        if (existing.password !== password) {
+          playSystemSound('penalty');
+          setErrorMessage('Incorrect password. Please verify your credentials.');
+          setLoading(false);
+          return;
+        }
+
+        const localToken = 'solo_local_token_' + Date.now();
+        localStorage.setItem('hunter_token', localToken);
+        localStorage.setItem('hunter_session_expiry', (Date.now() + 30 * 24 * 60 * 60 * 1000).toString());
+        localStorage.setItem('hunter_is_onboarded', 'true');
+        localStorage.setItem('isOnboarded', 'true');
+        localStorage.setItem('hunter_onboarding_profile', JSON.stringify(existing.player));
+
+        playSystemSound('levelUp');
+        if (onAuthSuccess) {
+          onAuthSuccess({ token: localToken, user: existing, player: existing.player });
+        }
+        return;
+      }
     } finally {
       setLoading(false);
     }
